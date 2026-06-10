@@ -754,7 +754,7 @@ function openReceiptModal(order) {
     document.getElementById('track-total').innerText = `Rp ${order.total.toLocaleString('id-ID')}`;
     document.getElementById('track-badge').innerText = order.status.toUpperCase();
 
-    const generatedTrackingUrl = `https://kasir-laundry-demo.page.gd?order=${order.id}`;
+    const generatedTrackingUrl = `https://foresa.my.id?order=${order.id}`;
     
     document.getElementById("qrcode").innerHTML = "";
     const qrcodeSvg = new QRCode({
@@ -791,7 +791,7 @@ function sendWhatsAppReceipt() {
         }
     }
     
-    const trackingUrl = `https://kasir-laundry-demo.page.gd?order=${id}`;
+    const trackingUrl = `https://foresa.my.id?order=${id}`;
     const messageText = `Halo, Terima kasih telah mencuci di *${tenantName}*.\n\nBerikut rincian Nota Transaksi digital Anda:\n🆔 No Nota: *${id}*\n👤 Konsumen: *${customer}*\n💰 Total Bill: *${total}*\n\n🌿 Pantau status proses pengerjaan laundry pakaian Anda secara realtime melalui link tautan resmi di bawah ini:\n🔗 ${trackingUrl}`;
     
     if (customerPhone !== "" && customerPhone !== "-") {
@@ -1176,7 +1176,7 @@ async function printBluetoothReceipt() {
         let paidVal = currentOrderData.cashPaid !== undefined && currentOrderData.cashPaid !== null ? currentOrderData.cashPaid : currentOrderData.total;
         let changeVal = currentOrderData.cashChange !== undefined && currentOrderData.cashChange !== null ? currentOrderData.cashChange : 0;
 
-        const trackingUrl = `https://kasir-laundry-demo.page.gd?order=${notaId}`;
+        const trackingUrl = `https://foresa.my.id?order=${notaId}`;
 
         const device = await navigator.bluetooth.requestDevice({
             filters: [
