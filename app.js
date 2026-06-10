@@ -1348,20 +1348,6 @@ function updateTenantUI() {
     }
 }
 
-function downloadGSCode() {
-    const gsCode = "Kalau mau kode GS, silakan order ke admin melalui link berikut:\nhttps://wa.me/6285659679645";
-    const blob = new Blob([gsCode], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const downloadLink = document.createElement("a");
-    downloadLink.href = url;
-    downloadLink.download = "kodegs.txt";
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    URL.revokeObjectURL(url);
-    triggerNotification("✅ File info order berhasil diunduh!");
-}
-
 // ===============================================================
 // FITUR PENCATATAN & FILTER PENGELUARAN KEUANGAN
 // ===============================================================
