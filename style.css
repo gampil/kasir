@@ -1,0 +1,107 @@
+body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: #f8fafc;
+}
+.theme-color { color: #40E0D0; }
+.theme-bg { background-color: #40E0D0; }
+.theme-border { border-color: #40E0D0; }
+.theme-bg-light { background-color: rgba(64, 224, 208, 0.08); }
+
+/* Custom UI Scrollbar */
+::-webkit-scrollbar { 
+    width: 5px; 
+    height: 5px; 
+}
+::-webkit-scrollbar-thumb { 
+    background: #40E0D0; 
+    border-radius: 10px; 
+}
+/* ===================================================
+   ATURAN CETAK KHUSUS PRINTER TERMAL KECIL (58mm Mini)
+   =================================================== */
+@media print {
+    /* 1. Sembunyikan semua elemen halaman web tanpa kecuali */
+    body *, html * {
+        visibility: hidden !important;
+    }
+
+    /* 2. Munculkan hanya area struk teks */
+    #receiptModal, 
+    #receiptModal *,
+    #print-area, 
+    #print-area * {
+        visibility: visible !important;
+    }
+
+    /* 3. Paksa ukuran area cetak pas masuk kertas termal 58mm */
+    #print-area {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 58mm !important; /* Standar lebar kertas printer bluetooth kecil */
+        max-width: 58mm !important;
+        margin: 0 !important;
+        padding: 2mm !important; /* Spasi tepi minimal */
+        border: none !important;
+        background: #fff !important;
+        box-shadow: none !important;
+    }
+
+    /* 4. Sembunyikan tombol-tombol aksi modal agar tidak ikut tercetak */
+    #receiptModal button, 
+    #receiptModal .grid,
+    #receiptModal .w-full.py-2\.5 {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    /* 5. Hilangkan margin kertas bawaan browser & potong sisa tinggi layar */
+    @page {
+        size: 58mm auto; /* Setel ukuran kertas cetak ke 58mm */
+        margin: 0mm !important;
+    }
+
+    html, body {
+        height: auto !important; /* Mencegah halaman melar ke bawah */
+        overflow: hidden !important; /* Memangkas tumpukan bar navigasi HP (Lingkaran Oren) */
+        background: #fff !important;
+    }
+
+    /* 6. Optimasi Font & Spasi Kasir Ukuran Mikro (Anti-Potong) */
+    #print-area {
+        font-family: 'Courier New', Courier, monospace !important;
+        font-size: 9px !important; /* Ukuran teks diperkecil agar muat di 58mm */
+        line-height: 1.1 !important;
+        color: #000 !important;
+    }
+
+    #print-area * {
+        color: #000 !important;
+        font-size: 9px !important;
+    }
+
+    /* Atur khusus Judul Nama Laundry agar sedikit lebih menonjol */
+    #print-area h4 {
+        font-size: 11px !important;
+        font-weight: bold !important;
+    }
+
+    /* Buat QR Code mengecil secara proporsional agar tidak meluber keluar kertas */
+    #qrcode img, #qrcode svg {
+        display: block !important;
+        margin: 0 auto !important;
+        width: 90px !important; /* Menjaga ukuran gambar QR Code asli tetap pas */
+        height: 90px !important;
+    }
+}
+
+/* ===================================================
+   HILANGKAN KOTAK KOSONG BERGARIS DI BAWAH QR CODE
+   =================================================== */
+#qrcode canvas {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+}

@@ -1,0 +1,103 @@
+
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 Halaman Tidak Ditemukan | Foresa Laundry</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS Browser -->
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+        }
+        .theme-color { color: #40E0D0; }
+        .theme-bg { background-color: #40E0D0; }
+        .theme-border { border-color: #40E0D0; }
+        .theme-bg-light { background-color: rgba(64, 224, 208, 0.08); }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(3deg); }
+            50% { transform: translateY(-10px) rotate(-3deg); }
+        }
+        .animate-float {
+            animation: float 4s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="antialiased bg-slate-50 min-h-screen flex flex-col justify-between">
+
+    <!-- Top Navigation Branding -->
+    <header class="bg-white border-b border-slate-100 px-4 py-4 sm:px-6">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <a href="home.html" class="flex items-center gap-3 no-underline">
+                <div class="w-9 h-9 theme-bg text-white rounded-xl flex items-center justify-center text-sm shadow-xs">
+                    <i class="fa-solid fa-jug-detergent"></i>
+                </div>
+                <div>
+                    <h1 class="text-sm font-extrabold text-slate-800 tracking-tight">Foresa<span class="theme-color">.</span></h1>
+                    <p class="text-[9px] text-slate-400 font-medium uppercase tracking-wider">Bersih • Wangi • Rapi</p>
+                </div>
+            </a>
+            <div class="flex gap-2">
+                <a href="home.html" class="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-2 rounded-xl hover:bg-slate-200 transition-all flex items-center gap-1">
+                    <i class="fa-solid fa-house text-[10px]"></i> Website Utama
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col justify-center items-center p-6 w-full max-w-md mx-auto relative overflow-hidden">
+        <!-- Background Accents (Sama seperti index.html) -->
+        <div class="absolute top-12 -left-16 w-48 h-48 rounded-full theme-bg opacity-5 blur-xl"></div>
+        <div class="absolute bottom-16 -right-20 w-64 h-64 rounded-full theme-bg opacity-5 blur-2xl"></div>
+
+        <div class="w-full bg-white rounded-3xl border border-slate-100 shadow-xl p-8 relative z-10 text-center space-y-6">
+            
+            <!-- Animated Custom Illustration -->
+            <div class="relative w-28 h-28 mx-auto flex items-center justify-center">
+                <div class="absolute inset-0 theme-bg opacity-10 rounded-3xl blur-md"></div>
+                <div class="w-24 h-24 theme-bg-light text-cyan-500 border border-cyan-100 rounded-3xl flex items-center justify-center text-4xl shadow-inner animate-float">
+                    <i class="fa-solid fa-shirt opacity-40 absolute text-slate-300 text-5xl"></i>
+                    <i class="fa-solid fa-soap text-4xl theme-color animate-bounce"></i>
+                </div>
+                <span class="absolute -bottom-1 -right-1 bg-rose-500 text-white text-[9px] font-black tracking-wider px-2 py-0.5 rounded-lg border-2 border-white shadow-sm uppercase">
+                    <i class="fa-solid fa-triangle-exclamation mr-0.5"></i> 404 Error
+                </span>
+            </div>
+
+            <!-- Error Messages -->
+            <div class="space-y-2">
+                <h2 class="text-4xl font-black text-slate-800 tracking-tight">404</h2>
+                <h3 class="text-sm font-extrabold text-slate-700 tracking-wide uppercase">Cucian Hilang Dari Radar! 🧺</h3>
+                <p class="text-xs font-medium text-slate-400 leading-relaxed max-w-xs mx-auto">
+                    Waduh! Halaman, tautan, atau nomor nota yang Anda cari tidak ditemukan. Mungkin sudah selesai diproses dan hanyut saat pembilasan, atau Anda salah mengetik alamatnya.
+                </p>
+            </div>
+
+            <!-- Interactive Action Buttons -->
+            <div class="space-y-2.5 pt-2">
+                <a href="home.html" class="w-full theme-bg text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-cyan-100 hover:opacity-90 transition-all text-xs uppercase tracking-wider flex justify-center items-center gap-2 no-underline">
+                    <i class="fa-solid fa-magnifying-glass text-[10px]"></i> Lacak Nota Lain (Beranda)
+                </a>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer Area -->
+    <footer class="text-center text-[10px] text-slate-300 font-medium tracking-wide pb-6 uppercase">
+        © 2026 foresa laundry • dibuat dengan❤️ agar selaras
+    </footer>
+
+</body>
+</html>
