@@ -1,11 +1,10 @@
+// ==========================================================================
+// KONFIGURASI PUSAT (Master URL harus persis sama dengan Web Owner)
+// ==========================================================================
+const MASTER_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzXyzTBYU0kq_UH-CV4iJZNSeZkIOHgk0lLJB8bid003X0ghnZ_nrVIoAFe0JQClp0/exec";
+
 // BACKEND CONFIGURATION (MULTI-TENANT): Mengambil URL dari local storage jika ada
 let SCRIPT_URL = localStorage.getItem('tenant_script_url') || "";
-
-// RESET OTOMATIS: Hapus memori jika yang tersimpan masih link dummy versi lama
-if (SCRIPT_URL === "https://script.google.com/macros/s/AKfycbxBkcaqATf2TwWYPp9g1BotA3YfJqmPPdE1euJZmWXMSD9xdYZfeZols7T5H7jqVd7lBw/exec") {
-    SCRIPT_URL = "";
-    localStorage.removeItem('tenant_script_url');
-}
 
 // PENGATURAN TOKO (MULTI-TENANT)
 let tenantName = localStorage.getItem('tenant_name') || "Forresa Laundry";
@@ -13,9 +12,9 @@ let tenantPhone = localStorage.getItem('tenant_phone') || "628123456789";
 
 // STATE VARIABEL & DATABASE LOCAL MEMORY
 let currentCashier = "";
-let cart = []; // 🛒 Menyimpan daftar banyak layanan yang dipilih
+let cart = []; 
 let isNewCustomerMode = false;
-let isLoading = true; // Status loading untuk efek shimmer
+let isLoading = true; 
 
 let services = [];
 let customers = [];
@@ -23,9 +22,15 @@ let paymentMethods = ['Tunai / Cash', 'QRIS', 'Transfer Bank'];
 let orders = [];
 let expenses = []; 
 
+// DATA DARI MASTER DB
+let masterBranches = [];
+let masterCashiers = [];
+let isMasterLoaded = false;
+
 // SESSION CONTROL LOGIC
 window.addEventListener('DOMContentLoaded', () => {
     updateTenantUI();
+    syncMasterData(); // Tarik data dari Master DB diam-diam di latar belakang
 
     const urlParams = new URLSearchParams(window.location.search);
     const orderParam = urlParams.get('order');
@@ -47,23 +52,42 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-const CASHIER_ACCOUNTS = {
-    "owner": "1234",
-    "admin": "1234",
-    "kasir1": "1234"
-};
+// ===============================================================
+// LOGIKA LOGIN MENGGUNAKAN MASTER DB
+// ===============================================================
+async function syncMasterData() {
+    if (!MASTER_SCRIPT_URL || MASTER_SCRIPT_URL.includes("TEMPEL_LINK")) return;
+    try {
+        const response = await fetch(`${MASTER_SCRIPT_URL}?action=getMasterData`);
+        const data = await response.json();
+        if (data.status === 'success') {
+            masterBranches = data.branches || [];
+            masterCashiers = data.cashiers || [];
+            isMasterLoaded = true;
+            console.log("Sinkronisasi Master Database Berhasil.");
+        }
+    } catch (e) {
+        console.error("Gagal mengambil data dari Master DB:", e);
+    }
+}
 
-function submitLogin() {
+async function submitLogin() {
     const nameInput = document.getElementById('input-cashier-name').value.trim();
     const pinInput = document.getElementById('input-input-pin') ? document.getElementById('input-input-pin').value : (document.getElementById('input-cashier-pin') ? document.getElementById('input-cashier-pin').value.trim() : "");
     
     if(!nameInput) return alert('Nama kasir wajib dimasukkan!');
     if(!pinInput) return alert('PIN keamanan wajib dimasukkan!');
 
-    const correctPin = CASHIER_ACCOUNTS[nameInput];
+    if(!isMasterLoaded) {
+        triggerNotification("Memvalidasi data ke server Master...");
+        await syncMasterData();
+    }
 
-    if (correctPin && pinInput === correctPin) {
-        currentCashier = nameInput;
+    // Cek kecocokan nama dan PIN dengan data di Master DB
+    const validCashier = masterCashiers.find(c => c.name.toLowerCase() === nameInput.toLowerCase() && String(c.pin) === String(pinInput));
+
+    if (validCashier) {
+        currentCashier = validCashier.name;
         localStorage.setItem('active_cashier', currentCashier);
         showMainApp();
         triggerNotification(`Selamat bertugas, ${currentCashier}! 👋`);
@@ -96,7 +120,7 @@ function loadDataFromCloud() {
         renderServicesGrid();
         populateDropdowns(); 
         renderOrders();
-        calculateFinance(); // Cukup ini saja, sudah mencakup pemasukan & pengeluaran
+        calculateFinance(); 
         return;
     }
     
@@ -104,7 +128,7 @@ function loadDataFromCloud() {
     isLoading = true;
     renderServicesGrid();
     renderOrders();
-    calculateFinance(); // Render efek loading untuk Keuangan
+    calculateFinance(); 
 
     fetch(`${SCRIPT_URL}?action=read`)
         .then(response => response.json())
@@ -112,23 +136,15 @@ function loadDataFromCloud() {
             if (!cloudData || cloudData.error) throw new Error("Data tidak valid");
             isLoading = false;
 
-            // Memuat Layanan
             if (cloudData.customServices && cloudData.customServices.length > 0) {
                 services = cloudData.customServices.map(s => ({...s, icon: s.icon || 'fa-box-tissue'}));
-            } else {
-                services = [];
-            }
+            } else { services = []; }
 
-            // Memuat Transaksi/Orders
             if (cloudData.transactions && cloudData.transactions.length > 0) {
                 orders = cloudData.transactions.map(t => {
                     let parsedItems = [];
                     if (t.itemsDetail) {
-                        try {
-                            parsedItems = typeof t.itemsDetail === 'string' ? JSON.parse(t.itemsDetail) : t.itemsDetail;
-                        } catch (e) {
-                            parsedItems = [];
-                        }
+                        try { parsedItems = typeof t.itemsDetail === 'string' ? JSON.parse(t.itemsDetail) : t.itemsDetail; } catch (e) { parsedItems = []; }
                     }
 
                     return {
@@ -149,7 +165,6 @@ function loadDataFromCloud() {
                     };
                 }).reverse(); 
 
-                // Membuat daftar pelanggan otomatis
                 const uniqueCustomerNames = new Set();
                 const tempCustomers = [];
 
@@ -157,47 +172,28 @@ function loadDataFromCloud() {
                     if (order.customer && order.customer.trim() !== "") {
                         const normalName = order.customer.trim();
                         const lowerName = normalName.toLowerCase();
-                        
                         if (!uniqueCustomerNames.has(lowerName)) {
                             uniqueCustomerNames.add(lowerName);
-                            tempCustomers.push({
-                                id: `C${tempCustomers.length + 1}`,
-                                name: normalName,
-                                phone: order.phone || '628123456789'
-                            });
+                            tempCustomers.push({ id: `C${tempCustomers.length + 1}`, name: normalName, phone: order.phone || '628123456789' });
                         }
                     }
                 });
                 customers = tempCustomers;
-            } else {
-                orders = [];
-                customers = [];
-            }
+            } else { orders = []; customers = []; }
 
-            // Memuat Pengeluaran
-            if (cloudData.expenses && cloudData.expenses.length > 0) {
-                expenses = cloudData.expenses;
-            } else {
-                expenses = [];
-            }
+            if (cloudData.expenses && cloudData.expenses.length > 0) { expenses = cloudData.expenses; } else { expenses = []; }
 
             renderServicesGrid();
             populateDropdowns(); 
             renderOrders();
-            calculateFinance(); // Panggil fungsi yang baru, akan mengkalkulasi semuanya
-            console.log("Sinkronisasi database sukses!");
+            calculateFinance(); 
         })
         .catch(err => {
             console.error("Gagal sinkron data cloud:", err);
             isLoading = false;
-            renderServicesGrid();
-            populateDropdowns(); 
-            renderOrders();
-            calculateFinance();
+            renderServicesGrid(); populateDropdowns(); renderOrders(); calculateFinance();
         });
 }
-
-
 
 function switchView(viewId) {
     document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
@@ -208,9 +204,7 @@ function switchView(viewId) {
     if(clickedBtn) clickedBtn.classList.add('theme-color');
 }
 
-function openNewServiceModal() {
-    document.getElementById('serviceModal').classList.remove('hidden');
-}
+function openNewServiceModal() { document.getElementById('serviceModal').classList.remove('hidden'); }
 
 function saveNewService() {
     const name = document.getElementById('new-service-name').value.trim();
@@ -218,10 +212,7 @@ function saveNewService() {
     const type = document.getElementById('new-service-type').value;
 
     if(!name || !price) return alert('Data input menu belum lengkap!');
-
-    // --- UBAH BARIS INI ---
     const newId = `S-${Math.floor(1000 + Math.random() * 9000)}`; 
-    
     const newServicePayload = { id: newId, name, price, type, icon: 'fa-box-tissue' };
     
     services.push(newServicePayload);
@@ -229,24 +220,11 @@ function saveNewService() {
     document.getElementById('serviceModal').classList.add('hidden');
     
     if(SCRIPT_URL !== "" && !SCRIPT_URL.includes("SCRIPT_URL")) {
-        const payloadToSend = {
-            action: "addService",
-            id: newServicePayload.id,
-            name: newServicePayload.name,
-            price: newServicePayload.price,
-            type: newServicePayload.type
-        };
-
-        fetch(SCRIPT_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payloadToSend)
-        }).catch(err => console.log(err));
+        const payloadToSend = { action: "addService", id: newServicePayload.id, name: newServicePayload.name, price: newServicePayload.price, type: newServicePayload.type };
+        fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payloadToSend) }).catch(err => console.log(err));
     }
     
-    document.getElementById('new-service-name').value = '';
-    document.getElementById('new-service-price').value = '';
+    document.getElementById('new-service-name').value = ''; document.getElementById('new-service-price').value = '';
     triggerNotification(`Menu layanan "${name}" sukses ditambahkan!`);
 }
 
@@ -272,11 +250,9 @@ function renderServicesGrid() {
     let htmlContent = '';
     services.forEach(item => {
         const isSelected = cart.some(cartItem => cartItem.id === item.id);
-        const borderStyle = isSelected 
-            ? 'bg-cyan-50 border-[#40E0D0]' : 'bg-slate-50 border-slate-200' ;
+        const borderStyle = isSelected ? 'bg-cyan-50 border-[#40E0D0]' : 'bg-slate-50 border-slate-200' ;
           
         htmlContent += `
-            <!-- TAMBAHKAN hover:border-[#40E0D0] dan hover:bg-cyan-50 DI BAWAH INI -->
             <div onclick="selectServiceToCart('${item.id}')" class="bg-white p-5 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between h-36 relative active:scale-95 ${borderStyle} hover:border-[#40E0D0] hover:bg-cyan-50">
                 <div class="absolute top-3 right-3 flex gap-2 z-20">
                     <button onclick="event.stopPropagation(); openEditServiceModal('${item.id}')" class="text-[10px] text-amber-500 bg-amber-50 w-6 h-6 rounded-full hover:bg-amber-100 flex items-center justify-center" title="Edit"><i class="fa-solid fa-pen"></i></button>
@@ -296,22 +272,17 @@ function renderServicesGrid() {
     grid.innerHTML = htmlContent;
 }
 
-
 function openEditServiceModal(id) {
     const match = services.find(s => s.id === id);
     if (!match) return;
-
     document.getElementById('edit-service-id').value = match.id;
     document.getElementById('edit-service-name').value = match.name;
     document.getElementById('edit-service-price').value = match.price;
     document.getElementById('edit-service-type').value = match.type;
-
     document.getElementById('editServiceModal').classList.remove('hidden');
 }
 
-function closeEditServiceModal() {
-    document.getElementById('editServiceModal').classList.add('hidden');
-}
+function closeEditServiceModal() { document.getElementById('editServiceModal').classList.add('hidden'); }
 
 function submitEditService() {
     const id = document.getElementById('edit-service-id').value;
@@ -323,20 +294,12 @@ function submitEditService() {
 
     const idx = services.findIndex(s => s.id === id);
     if (idx !== -1) {
-        services[idx].name = name;
-        services[idx].price = price;
-        services[idx].type = type;
-        renderServicesGrid();
-        closeEditServiceModal();
+        services[idx].name = name; services[idx].price = price; services[idx].type = type;
+        renderServicesGrid(); closeEditServiceModal();
 
         if (SCRIPT_URL !== "" && !SCRIPT_URL.includes("TEMPEL_URL")) {
             const editPayload = { action: "editService", id, name, price, type };
-            fetch(SCRIPT_URL, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(editPayload)
-            }).catch(err => console.log(err));
+            fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(editPayload) }).catch(err => console.log(err));
         }
         triggerNotification(`Layanan "${name}" berhasil diperbarui!`);
     }
@@ -345,22 +308,15 @@ function submitEditService() {
 function deleteServiceFromPOS(id) {
     const match = services.find(s => s.id === id);
     if (!match) return;
-
     if (confirm(`Apakah Anda yakin ingin menghapus layanan "${match.name}"?`)) {
         services = services.filter(s => s.id !== id);
         renderServicesGrid();
-        
         cart = cart.filter(c => c.id !== id);
         renderCart();
 
         if (SCRIPT_URL !== "" && !SCRIPT_URL.includes("TEMPEL_URL")) {
             const deletePayload = { action: "deleteService", id };
-            fetch(SCRIPT_URL, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(deletePayload)
-            }).catch(err => console.log(err));
+            fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(deletePayload) }).catch(err => console.log(err));
         }
         triggerNotification(`Layanan "${match.name}" telah dihapus.`);
     }
@@ -371,39 +327,22 @@ function populateDropdowns() {
     const payDropdown = document.getElementById('cart-payment');
     
     if(custDropdown) {
-        if(customers.length > 0) {
-            custDropdown.innerHTML = customers.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
-        } else {
-            custDropdown.innerHTML = `<option value="">Belum ada pelanggan terdaftar</option>`;
-        }
+        if(customers.length > 0) { custDropdown.innerHTML = customers.map(c => `<option value="${c.name}">${c.name}</option>`).join(''); } 
+        else { custDropdown.innerHTML = `<option value="">Belum ada pelanggan terdaftar</option>`; }
     }
-    if(payDropdown && paymentMethods) {
-        payDropdown.innerHTML = paymentMethods.map(p => `<option value="${p}">${p}</option>`).join('');
-    }
+    if(payDropdown && paymentMethods) { payDropdown.innerHTML = paymentMethods.map(p => `<option value="${p}">${p}</option>`).join(''); }
 }
 
 function selectServiceToCart(id) {
     const service = services.find(s => s.id === id);
     if (!service) return;
-
     if (!Array.isArray(cart)) cart = [];
 
     const existingItem = cart.find(item => item.id === id);
-    if (existingItem) {
-        existingItem.qty += 1;
-    } else {
-        cart.push({ 
-            id: service.id, 
-            name: service.name, 
-            price: service.price, 
-            type: service.type, 
-            icon: service.icon, 
-            qty: 1 
-        });
-    }
+    if (existingItem) { existingItem.qty += 1; } 
+    else { cart.push({ id: service.id, name: service.name, price: service.price, type: service.type, icon: service.icon, qty: 1 }); }
 
-    renderCart();
-    renderServicesGrid(); 
+    renderCart(); renderServicesGrid(); 
     triggerNotification(`Layanan ${service.name} masuk keranjang`);
 }
 
@@ -430,26 +369,18 @@ function renderCart() {
         html += `
             <div class="bg-white border-2 border-teal-400 p-4 rounded-2xl shadow-xs w-full flex flex-col gap-3 relative">
                 <div class="flex justify-between items-center w-full">
-                    <p class="font-extrabold text-slate-800 text-sm tracking-tight pr-4 line-clamp-1 flex-1 text-left">
-                        ${item.name}
-                    </p>
+                    <p class="font-extrabold text-slate-800 text-sm tracking-tight pr-4 line-clamp-1 flex-1 text-left">${item.name}</p>
                     <button type="button" onclick="deleteCartItem(${index})" class="text-rose-500 bg-rose-50 w-6 h-6 rounded-full hover:bg-rose-100 transition-all flex items-center justify-center shrink-0 shadow-2xs" title="Hapus Layanan">
                         <i class="fa-solid fa-trash text-[10px]"></i>
                     </button>
                 </div>
                 <div class="flex justify-between items-center w-full pt-2 border-t border-slate-50">
-                    <div class="text-left">
-                        <p class="text-[10px] text-slate-400 font-semibold">
-                            Rp ${item.price.toLocaleString('id-ID')} / ${isKiloan ? 'Kg' : 'Pcs'}
-                        </p>
-                    </div>
+                    <div class="text-left"><p class="text-[10px] text-slate-400 font-semibold">Rp ${item.price.toLocaleString('id-ID')} / ${isKiloan ? 'Kg' : 'Pcs'}</p></div>
                     <div class="flex items-center gap-1.5">
                         <span class="text-[10px] text-slate-400 font-bold">${isKiloan ? 'Berat:' : 'Jumlah:'}</span>
                         <input type="number" value="${item.qty}" min="0.01" step="${isKiloan ? '0.1' : '1'}" oninput="updateCartQty(${index}, this.value)" class="w-14 bg-slate-50 border border-slate-200 rounded-xl p-1 font-extrabold text-slate-700 text-center outline-none focus:border-[#40E0D0] transition-all text-xs">
                         <span class="text-[10px] text-slate-400 font-bold pr-1">${isKiloan ? 'Kg' : 'Pcs'}</span>
-                        <span id="subtotal-${index}" class="font-extrabold text-slate-800 min-w-[70px] text-right text-sm">
-                            Rp ${Math.round(subtotal).toLocaleString('id-ID')}
-                        </span>
+                        <span id="subtotal-${index}" class="font-extrabold text-slate-800 min-w-[70px] text-right text-sm">Rp ${Math.round(subtotal).toLocaleString('id-ID')}</span>
                     </div>
                 </div>
             </div>`;
@@ -459,42 +390,30 @@ function renderCart() {
     container.innerHTML = html;
     
     const totalEl = document.getElementById('total-amount');
-    if (totalEl) {
-        totalEl.innerText = `Rp ${Math.round(totalAkhir).toLocaleString('id-ID')}`;
-    }
-    
+    if (totalEl) totalEl.innerText = `Rp ${Math.round(totalAkhir).toLocaleString('id-ID')}`;
     calculateChangeAutomatically();
 }
 
 function deleteCartItem(index) {
     const deletedItemName = cart[index].name;
     cart.splice(index, 1);
-    renderCart();
-    renderServicesGrid();
+    renderCart(); renderServicesGrid();
     triggerNotification(`Layanan "${deletedItemName}" dihapus dari keranjang`);
 }
 
 function updateCartQty(index, val) {
     let parsed = parseFloat(val);
     if (isNaN(parsed) || parsed < 0) parsed = 0;
-    
     cart[index].qty = parsed; 
     
     const subtotalEl = document.getElementById(`subtotal-${index}`);
-    if (subtotalEl) {
-        subtotalEl.innerText = `Rp ${Math.round(cart[index].price * cart[index].qty).toLocaleString('id-ID')}`;
-    }
+    if (subtotalEl) subtotalEl.innerText = `Rp ${Math.round(cart[index].price * cart[index].qty).toLocaleString('id-ID')}`;
     
     let totalAkhir = 0;
-    cart.forEach((item) => {
-        totalAkhir += (item.price * item.qty);
-    });
+    cart.forEach((item) => { totalAkhir += (item.price * item.qty); });
     
     const totalAmountEl = document.getElementById('total-amount');
-    if (totalAmountEl) {
-        totalAmountEl.innerText = `Rp ${Math.round(totalAkhir).toLocaleString('id-ID')}`;
-    }
-    
+    if (totalAmountEl) totalAmountEl.innerText = `Rp ${Math.round(totalAkhir).toLocaleString('id-ID')}`;
     calculateChangeAutomatically();
 }
 
@@ -505,7 +424,6 @@ function handlePaymentMethodChange() {
     const payMethod = payDropdown.value;
     const cashWrapper = document.getElementById('wrapper-cash-calculation');
     const inputPaidEl = document.getElementById('cart-cash-paid');
-    
     const safeCart = Array.isArray(cart) ? cart : [];
     const totalHargaAkhir = safeCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
 
@@ -567,31 +485,25 @@ function toggleNewCustomerInput() {
     const boxNew = document.getElementById('box-new-customer');
     
     if (!toggleInput || !boxOld || !boxNew) return;
-
     isNewCustomerMode = toggleInput.checked;
 
     if (isNewCustomerMode) {
-        boxOld.classList.add('hidden');
-        boxNew.classList.remove('hidden');
+        boxOld.classList.add('hidden'); boxNew.classList.remove('hidden');
     } else {
-        boxOld.classList.remove('hidden');
-        boxNew.classList.add('hidden');
-        document.getElementById('new-cust-name').value = '';
-        document.getElementById('new-cust-phone').value = '';
+        boxOld.classList.remove('hidden'); boxNew.classList.add('hidden');
+        document.getElementById('new-cust-name').value = ''; document.getElementById('new-cust-phone').value = '';
     }
 }
 
 function processCheckout() {
     if (cart.length === 0) return triggerNotification('Pilih layanan laundry terlebih dahulu!');
-    
     cart = cart.filter(item => item.qty > 0);
     if (cart.length === 0) return alert('❌ Jumlah berat atau pcs layanan tidak boleh kosong atau 0!');
     
     const payMethod = document.getElementById('cart-payment').value;
     const totalHargaAkhir = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
     
-    let cashPaid = 0;
-    let cashChange = 0;
+    let cashPaid = 0; let cashChange = 0;
     
     if (payMethod === 'Tunai / Cash') {
         const inputPaidEl = document.getElementById('cart-cash-paid');
@@ -604,25 +516,19 @@ function processCheckout() {
         if (selectedPaymentStatus === "Lunas" && cashPaid < totalHargaAkhir) {
             return alert(`❌ Uang yang dibayar (Rp ${cashPaid.toLocaleString('id-ID')}) kurang dari nominal tagihan total belanja!`);
         }
-        if (cashPaid >= totalHargaAkhir) {
-            cashChange = cashPaid - totalHargaAkhir;
-        }
+        if (cashPaid >= totalHargaAkhir) { cashChange = cashPaid - totalHargaAkhir; }
     } else {
-        cashPaid = totalHargaAkhir;
-        cashChange = 0;
+        cashPaid = totalHargaAkhir; cashChange = 0;
     }
 
     const generatedOrderId = `FRS-${Math.floor(1000 + Math.random() * 9000)}`;
-    
-    let customerName = "";
-    let customerPhone = "";
+    let customerName = ""; let customerPhone = "";
 
     if (isNewCustomerMode || customers.length === 0) {
         const inputName = document.getElementById('new-cust-name').value.trim();
         const inputPhone = document.getElementById('new-cust-phone').value.trim();
 
         if (!inputName) return alert('Nama pelanggan baru wajib diisi!');
-        
         customerName = inputName;
         customerPhone = inputPhone ? (inputPhone.startsWith('0') ? '62' + inputPhone.slice(1) : inputPhone) : "-";
 
@@ -635,79 +541,43 @@ function processCheckout() {
     }
 
     const serviceDetailLabel = cart.map(item => `${item.name} (${item.qty}x)`).join(", ");
-    
     let selectedPaymentStatus = "Lunas";
     const statusDropdown = document.getElementById('cart-payment-status');
-    if (statusDropdown) {
-        selectedPaymentStatus = statusDropdown.value;
-    }
+    if (statusDropdown) { selectedPaymentStatus = statusDropdown.value; }
 
-    const itemsDetailBackup = cart.map(c => ({ name: c.name, price: c.price, qty: c.qty }));
+    const itemsDetailBackup = cart.map(c => ({ name: c.name, price: c.price, qty: c.qty, type: c.type }));
     const inputOrderDate = document.getElementById('cart-order-date').value;
     const inputPickupDate = document.getElementById('cart-pickup-date').value;
 
-    if (!inputOrderDate || !inputPickupDate) {
-        return alert('❌ Tanggal masuk (nota) dan estimasi pengambilan wajib diisi!');
-    }
+    if (!inputOrderDate || !inputPickupDate) return alert('❌ Tanggal masuk (nota) dan estimasi pengambilan wajib diisi!');
 
     const checkoutPayload = {
-        id: generatedOrderId,
-        customer: customerName,
-        phone: customerPhone,
-        service: serviceDetailLabel, 
-        total: totalHargaAkhir,
-        cashier: currentCashier || "Kasir",
-        method: payMethod,
-        status: 'Diproses',
-        paymentStatus: selectedPaymentStatus, 
-        cashPaid: cashPaid,
-        cashChange: cashChange,
-        itemsDetail: itemsDetailBackup,
-        date: inputOrderDate,               
-        estimatedPickup: inputPickupDate    
+        id: generatedOrderId, customer: customerName, phone: customerPhone, service: serviceDetailLabel, 
+        total: totalHargaAkhir, cashier: currentCashier || "Kasir", method: payMethod, status: 'Diproses',
+        paymentStatus: selectedPaymentStatus, cashPaid: cashPaid, cashChange: cashChange,
+        itemsDetail: itemsDetailBackup, date: inputOrderDate, estimatedPickup: inputPickupDate    
     };
 
-    // Tambah ke riwayat lokal layar kasir
     orders.unshift(checkoutPayload);
-    renderOrders();
-    calculateFinance();
-    openReceiptModal(checkoutPayload);
+    renderOrders(); calculateFinance(); openReceiptModal(checkoutPayload);
 
-    // Sync ke Cloud Google Sheets jika URL valid
     if (SCRIPT_URL !== "" && !SCRIPT_URL.includes("SCRIPT_URL")) {
-        const cloudPayload = {
-            action: "checkout", // FIX BUG 2: Berikan identitas aksi agar Google Apps Script mengenalnya
-            ...checkoutPayload,
-            itemsDetail: JSON.stringify(itemsDetailBackup)
-        };
-        
-        fetch(SCRIPT_URL, { 
-            method: 'POST', 
-            mode: 'no-cors', 
-            headers: {'Content-Type': 'application/json'}, 
-            body: JSON.stringify(cloudPayload) 
-        })
-        .then(() => console.log("Data berhasil dikirim ke Google Sheets."))
+        const cloudPayload = { action: "checkout", ...checkoutPayload, itemsDetail: JSON.stringify(itemsDetailBackup) };
+        fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cloudPayload) })
         .catch(err => console.log("Gagal sinkronisasi cloud:", err));
     }
 
-    cart = [];
-    renderCart();
+    cart = []; renderCart();
     
     const toggleInput = document.getElementById('customer-toggle-input');
-    if (toggleInput && toggleInput.checked) {
-        toggleInput.checked = false;
-    }
+    if (toggleInput && toggleInput.checked) toggleInput.checked = false;
     toggleNewCustomerInput(); 
     
-    document.getElementById('new-cust-name').value = '';
-    document.getElementById('new-cust-phone').value = '';
-    resetCashCalculationInputs();
-    renderServicesGrid();
-    setDefaultDates();
-    
+    document.getElementById('new-cust-name').value = ''; document.getElementById('new-cust-phone').value = '';
+    resetCashCalculationInputs(); renderServicesGrid(); setDefaultDates();
     triggerNotification(`Nota ${generatedOrderId} berhasil diproses!`);
 }
+
 function openReceiptModal(order) {
     if(document.getElementById('nota-date')) document.getElementById('nota-date').innerText = formatTanggalIndo(order.date);
     if(document.getElementById('nota-date-in')) document.getElementById('nota-date-in').innerText = formatTanggalIndo(order.date);
@@ -720,20 +590,28 @@ function openReceiptModal(order) {
     const notaItemsContainer = document.getElementById('nota-items-list');
     if (notaItemsContainer) {
         if (order.itemsDetail && order.itemsDetail.length > 0) {
-            notaItemsContainer.innerHTML = order.itemsDetail.map(item => `
+            notaItemsContainer.innerHTML = order.itemsDetail.map(item => {
+                // Logika pintar penentuan Kg atau Pcs
+                let unit = 'x';
+                if (item.type) {
+                    unit = (item.type === 'Kiloan') ? 'Kg' : 'Pcs';
+                } else {
+                    // Fallback untuk data nota lama yang belum punya tipe
+                    unit = (item.qty % 1 !== 0) ? 'Kg' : 'Pcs';
+                }
+                
+                return `
                 <div class="flex justify-between items-start py-0.5 border-b border-slate-50">
                     <div class="max-w-[180px]">
                         <p class="font-semibold">${item.name}</p>
-                        <p class="text-[10px] text-slate-400">${item.qty}x @ Rp ${item.price.toLocaleString('id-ID')}</p>
+                        <p class="text-[10px] text-slate-400">${item.qty} ${unit} @ Rp ${item.price.toLocaleString('id-ID')}</p>
                     </div>
                     <span class="font-bold text-slate-700">Rp ${(item.price * item.qty).toLocaleString('id-ID')}</span>
                 </div>
-            `).join('');
+                `;
+            }).join('');
         } else {
-            notaItemsContainer.innerHTML = `
-                <div class="flex justify-between">
-                    <span class="font-semibold">${order.service}</span>
-                </div>`;
+            notaItemsContainer.innerHTML = `<div class="flex justify-between"><span class="font-semibold">${order.service}</span></div>`;
         }
     }
     
@@ -742,11 +620,9 @@ function openReceiptModal(order) {
 
     const elementPay = document.getElementById('nota-paymethod') || document.getElementById('nota-payMethod');
     if (elementPay) elementPay.innerText = order.method || "Tunai / Cash";
-
     if(document.getElementById('nota-payment-status')) document.getElementById('nota-payment-status').innerText = order.paymentStatus || 'Lunas';
 
     document.getElementById('nota-total').innerText = `Rp ${order.total.toLocaleString('id-ID')}`;
-    
     const displayPaidReceipt = document.getElementById('nota-cash-paid-display');
     const displayChangeReceipt = document.getElementById('nota-cash-change-display');
     
@@ -760,18 +636,8 @@ function openReceiptModal(order) {
     document.getElementById('track-badge').innerText = order.status.toUpperCase();
 
     const generatedTrackingUrl = `https://foresa.my.id?order=${order.id}`;
-    
     document.getElementById("qrcode").innerHTML = "";
-    const qrcodeSvg = new QRCode({
-        content: generatedTrackingUrl,
-        padding: 0,
-        width: 80,
-        height: 80,
-        color: "#000000",
-        background: "#ffffff",
-        ecl: "L"
-    }).svg();
-    
+    const qrcodeSvg = new QRCode({ content: generatedTrackingUrl, padding: 0, width: 80, height: 80, color: "#000000", background: "#ffffff", ecl: "L" }).svg();
     document.getElementById("qrcode").innerHTML = qrcodeSvg;
     document.getElementById('receiptModal').classList.remove('hidden');
 }
@@ -785,32 +651,24 @@ function sendWhatsAppReceipt() {
     const id = document.getElementById('nota-id').innerText;
     const customer = document.getElementById('nota-customer').innerText;
     const total = document.getElementById('nota-total').innerText;
-    
     let customerPhone = "";
     const currentOrderData = orders.find(o => o.id === id);
     
     if (currentOrderData && currentOrderData.phone) {
         customerPhone = currentOrderData.phone.trim().replace(/[-+ _]/g, "");
-        if (customerPhone.startsWith("0")) {
-            customerPhone = "62" + customerPhone.slice(1);
-        }
+        if (customerPhone.startsWith("0")) { customerPhone = "62" + customerPhone.slice(1); }
     }
     
     const trackingUrl = `https://foresa.my.id?order=${id}`;
     const messageText = `Halo, Terima kasih telah mencuci di *${tenantName}*.\n\nBerikut rincian Nota Transaksi digital Anda:\n🆔 No Nota: *${id}*\n👤 Konsumen: *${customer}*\n💰 Total Bill: *${total}*\n\n🌿 Pantau status proses pengerjaan laundry pakaian Anda secara realtime melalui link tautan resmi di bawah ini:\n🔗 ${trackingUrl}`;
     
-    if (customerPhone !== "" && customerPhone !== "-") {
-        window.open(`https://api.whatsapp.com/send?phone=${customerPhone}&text=${encodeURIComponent(messageText)}`, '_blank');
-    } else {
-        window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(messageText)}`, '_blank');
-    }
+    if (customerPhone !== "" && customerPhone !== "-") { window.open(`https://api.whatsapp.com/send?phone=${customerPhone}&text=${encodeURIComponent(messageText)}`, '_blank'); } 
+    else { window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(messageText)}`, '_blank'); }
 }
 
 function searchByQR(val) {
     let q = val.toUpperCase();
-    document.querySelectorAll('#orders-list > div').forEach(c => {
-        c.innerText.toUpperCase().includes(q) ? c.classList.remove('hidden') : c.classList.add('hidden');
-    });
+    document.querySelectorAll('#orders-list > div').forEach(c => { c.innerText.toUpperCase().includes(q) ? c.classList.remove('hidden') : c.classList.add('hidden'); });
 }
 
 function renderOrders() {
@@ -818,11 +676,7 @@ function renderOrders() {
     if(!ordersList) return;
 
     if (isLoading) {
-        ordersList.innerHTML = `
-            <div class="bg-slate-200 rounded-2xl h-36 animate-pulse"></div>
-            <div class="bg-slate-200 rounded-2xl h-36 animate-pulse"></div>
-            <div class="bg-slate-200 rounded-2xl h-36 animate-pulse"></div>
-        `;
+        ordersList.innerHTML = `<div class="bg-slate-200 rounded-2xl h-36 animate-pulse"></div><div class="bg-slate-200 rounded-2xl h-36 animate-pulse"></div><div class="bg-slate-200 rounded-2xl h-36 animate-pulse"></div>`;
         return;
     }
 
@@ -851,20 +705,18 @@ function renderOrders() {
                     <h4 class="font-bold text-slate-800 text-sm">${o.customer}</h4>
                     <p class="text-[11px] text-slate-400">${o.service}</p>
                     <p class="text-[10px] text-slate-400 italic">WA: +${o.phone}</p>
-                    
                     <div class="${paymentBoxClass}">
-                        <i class="${isBelumBayar ? 'fa-solid fa-circle-exclamation' : 'fa-solid fa-circle-check'}"></i> 
-                        ${o.paymentStatus || 'Lunas'}
+                        <i class="${isBelumBayar ? 'fa-solid fa-circle-exclamation' : 'fa-solid fa-circle-check'}"></i> ${o.paymentStatus || 'Lunas'}
                     </div>
                 </div>
                 <div class="space-y-2 pt-2 border-t border-slate-50">
                     <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Update Status Operasional:</label>
-                    <select onchange="updateOrderStatus('${o.id}', this.value)" class="w-full text-[11px] bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-semibold text-slate-700 outline-none focus:border-cyan-400">
+                    <select onchange="updateOrderStatus('${o.id}', this.value)" class="w-full text-[11px] bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-semibold text-slate-700 outline-none focus:border-[#40E0D0]">
                         <option value="Diproses" ${o.status === 'Diproses' ? 'selected' : ''}>⏳ Sedang Diproses</option>
                         <option value="Selesai" ${o.status === 'Selesai' ? 'selected' : ''}>✨ Selesai (Siap Ambil)</option>
                         <option value="Diambil" ${o.status === 'Diambil' ? 'selected' : ''}>✅ Sudah Diambil Pelanggan</option>
                     </select>
-                    <select onchange="updatePaymentStatus('${o.id}', this.value)" class="w-full text-[11px] bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-semibold text-slate-700 outline-none focus:border-cyan-400 mt-1.5">
+                    <select onchange="updatePaymentStatus('${o.id}', this.value)" class="w-full text-[11px] bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-semibold text-slate-700 outline-none focus:border-[#40E0D0] mt-1.5">
                         <option value="Lunas" ${o.paymentStatus === 'Lunas' ? 'selected' : ''}>✔️ Lunas</option>
                         <option value="Belum Bayar" ${o.paymentStatus === 'Belum Bayar' ? 'selected' : ''}>🔴 Belum Bayar</option>
                     </select>
@@ -872,7 +724,7 @@ function renderOrders() {
                 <div class="flex justify-between items-center pt-2">
                     <span class="text-xs font-bold theme-color">Rp ${o.total.toLocaleString('id-ID')}</span>
                     <div class="flex gap-1">
-                        <button onclick="openLiveTrackingPreview('${o.id}')" class="text-[10px] font-bold bg-cyan-50 text-[#40E0D0] px-2.5 py-1.5 rounded-lg hover:bg-cyan-100/50" title="Cek Tampilan Live"><i class="fa-solid fa-eye"></i></button>
+                        <button onclick="openLiveTrackingPreview('${o.id}')" class="text-[10px] font-bold bg-cyan-50 theme-color px-2.5 py-1.5 rounded-lg hover:bg-cyan-100/50" title="Cek Tampilan Live"><i class="fa-solid fa-eye"></i></button>
                         <button onclick="openReceiptModalById('${o.id}')" class="text-[10px] font-bold bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-200">Buka Struk</button>
                     </div>
                 </div>
@@ -883,21 +735,9 @@ function renderOrders() {
 function updateOrderStatus(orderId, newStatus) {
     const orderIndex = orders.findIndex(o => o.id === orderId);
     if (orderIndex !== -1) {
-        orders[orderIndex].status = newStatus;
-        renderOrders();
-        
+        orders[orderIndex].status = newStatus; renderOrders();
         if (SCRIPT_URL !== "" && !SCRIPT_URL.includes("SCRIPT_URL")) {
-            fetch(SCRIPT_URL, { 
-                method: 'POST', 
-                mode: 'no-cors', 
-                headers: {'Content-Type': 'application/json'}, 
-                body: JSON.stringify({ 
-                    action: "updateStatus", 
-                    id: orderId, 
-                    status: newStatus 
-                }) 
-            })
-            .then(() => console.log(`Berhasil sinkron status ${orderId} ke cloud.`))
+            fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ action: "updateStatus", id: orderId, status: newStatus }) })
             .catch(err => console.log("Gagal sinkron cloud:", err));
         }
         triggerNotification(`Status pesanan nota ${orderId} diubah menjadi: ${newStatus}`);
@@ -927,25 +767,15 @@ function openLiveTrackingPreview(orderId) {
     }
 
     const steps = document.querySelectorAll('#view-tracking .relative.pl-6 > div');
-    
-    steps.forEach((step) => {
-        setStepActive(step, false, false);
-    });
+    steps.forEach((step) => { setStepActive(step, false, false); });
 
     if (order.status === "Diproses") {
-        setStepActive(steps[0], true, false); 
-        setStepActive(steps[1], true, true);  
+        setStepActive(steps[0], true, false); setStepActive(steps[1], true, true);  
     } else if (order.status === "Selesai") {
-        setStepActive(steps[0], true, false); 
-        setStepActive(steps[1], true, false); 
-        setStepActive(steps[2], true, true);  
+        setStepActive(steps[0], true, false); setStepActive(steps[1], true, false); setStepActive(steps[2], true, true);  
     } else if (order.status === "Diambil") {
-        setStepActive(steps[0], true, false); 
-        setStepActive(steps[1], true, false); 
-        setStepActive(steps[2], true, false); 
-        setStepActive(steps[3], true, false); 
+        setStepActive(steps[0], true, false); setStepActive(steps[1], true, false); setStepActive(steps[2], true, false); setStepActive(steps[3], true, false); 
     }
-
     switchView('tracking');
 }
 
@@ -964,14 +794,10 @@ function setStepActive(stepElement, isActive, isPulse) {
     }
 
     if (ping) {
-        if (isPulse) {
-            ping.className = "absolute -left-[31px] top-1 w-4 h-4 rounded-full theme-bg opacity-75 animate-ping";
-        } else {
-            ping.classList.add('hidden');
-        }
+        if (isPulse) { ping.className = "absolute -left-[31px] top-1 w-4 h-4 rounded-full theme-bg opacity-75 animate-ping"; } 
+        else { ping.classList.add('hidden'); }
     }
 }
-
           
 function exportToExcel() {
     if(orders.length === 0) return alert('Data transaksi masih kosong!');
@@ -994,8 +820,6 @@ window.addEventListener('load', () => {
     const orderParam = urlParams.get('order');
     
     if (orderParam) {
-        console.log("Mendeteksi Pelanggan melakukan pelacakan nota:", orderParam);
-        
         document.getElementById('login-screen').classList.add('hidden');
         document.getElementById('main-app').classList.remove('hidden');
         
@@ -1014,15 +838,12 @@ window.addEventListener('load', () => {
 
         function fetchStatusPelanggan() {
             if (SCRIPT_URL === "" || SCRIPT_URL.includes("SCRIPT_URL")) return;
-            console.log("Menyelaraskan status nota konsumen secara real-time...");
-            
             fetch(`${SCRIPT_URL}?order=${encodeURIComponent(orderParam)}`)
                 .then(response => response.json())
                 .then(cloudData => {
                     if (cloudData && cloudData.transactions && cloudData.transactions.length > 0) {
                         const match = cloudData.transactions[0];
                         openLiveTrackingPreview(match.id);
-                        
                         const orderIdx = orders.findIndex(o => o.id.toUpperCase() === match.id.toUpperCase());
                         if(orderIdx !== -1) orders[orderIdx] = match; else orders.unshift(match);
                     } else {
@@ -1045,26 +866,19 @@ async function printBluetoothReceipt() {
     try {
         const notaId = document.getElementById('nota-id').innerText;
         const currentOrderData = orders.find(o => o.id === notaId);
-        if (!currentOrderData) {
-            return alert('❌ Data transaksi tidak ditemukan di memori sistem!');
-        }
+        if (!currentOrderData) { return alert('❌ Data transaksi tidak ditemukan di memori sistem!'); }
 
         const notaCashier = currentOrderData.cashier || "Kasir";
         const notaCustomer = currentOrderData.customer || "-";
         const notaTotal = currentOrderData.total || 0;
         const notaPaymethod = currentOrderData.method || "Tunai / Cash"; 
         const notaPaymentStatus = currentOrderData.paymentStatus || "Lunas";
-
         let paidVal = currentOrderData.cashPaid !== undefined && currentOrderData.cashPaid !== null ? currentOrderData.cashPaid : currentOrderData.total;
         let changeVal = currentOrderData.cashChange !== undefined && currentOrderData.cashChange !== null ? currentOrderData.cashChange : 0;
-
         const trackingUrl = `https://foresa.my.id?order=${notaId}`;
 
         const device = await navigator.bluetooth.requestDevice({
-            filters: [
-                { namePrefix: 'MTP' }, { namePrefix: 'RPP' }, { namePrefix: 'POS' }, { namePrefix: 'EPPOS' },
-                { services: [PRINTER_SERVICE_UUID] }
-            ],
+            filters: [ { namePrefix: 'MTP' }, { namePrefix: 'RPP' }, { namePrefix: 'POS' }, { namePrefix: 'EPPOS' }, { services: [PRINTER_SERVICE_UUID] } ],
             optionalServices: [PRINTER_SERVICE_UUID]
         });
 
@@ -1097,27 +911,33 @@ async function printBluetoothReceipt() {
         const CMD_QR_PRINT = new Uint8Array([GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30]);
 
         let printPayload = [];
-
         printPayload.push(CMD_INIT);
         printPayload.push(CMD_CENTER, CMD_BOLD_ON, text(`====== ${tenantName.toUpperCase()} ======"`), CMD_BOLD_OFF);
         printPayload.push(text(`Hub.+${tenantPhone}`));
         printPayload.push(text("================================"));
-
         printPayload.push(CMD_LEFT);
         printPayload.push(text(`Tgl Masuk : ${formatTanggalIndo(currentOrderData.date)}`));
         printPayload.push(text(`Estimasi  : ${currentOrderData.estimatedPickup ? formatTanggalIndo(currentOrderData.estimatedPickup) : "-"}`));
         printPayload.push(text(`Invoice   : ${notaId}`));
         printPayload.push(text(`Kasir     : ${notaCashier}`));
-       printPayload.push(text(`Customer  : ${notaCustomer}`));
+        printPayload.push(text(`Customer  : ${notaCustomer}`));
         printPayload.push(text("--------------------------------"));
 
         if (currentOrderData.itemsDetail && currentOrderData.itemsDetail.length > 0) {
             currentOrderData.itemsDetail.forEach(it => {
+                // Logika pintar penentuan Kg atau Pcs untuk Bluetooth Printer
+                let unit = 'x';
+                if (it.type) {
+                    unit = (it.type === 'Kiloan') ? 'Kg' : 'Pcs';
+                } else {
+                    unit = (it.qty % 1 !== 0) ? 'Kg' : 'Pcs';
+                }
+
                 printPayload.push(CMD_LEFT, text(`${it.name}`));
-                printPayload.push(CMD_RIGHT, text(`${it.qty}x @ Rp ${it.price.toLocaleString('id-ID')} -> Rp ${(it.price * it.qty).toLocaleString('id-ID')}`));
+                printPayload.push(CMD_RIGHT, text(`${it.qty} ${unit} @ Rp ${it.price.toLocaleString('id-ID')} -> Rp ${(it.price * it.qty).toLocaleString('id-ID')}`));
             });
-        } else {
-            printPayload.push(CMD_LEFT, text(currentOrderData.service || "Layanan Laundry"));
+        } else { 
+            printPayload.push(CMD_LEFT, text(currentOrderData.service || "Layanan Laundry")); 
         }
         
         printPayload.push(CMD_LEFT, text("--------------------------------"));
@@ -1125,99 +945,67 @@ async function printBluetoothReceipt() {
         printPayload.push(text(`Status     : ${notaPaymentStatus}`));
         printPayload.push(text(`Uang Bayar : Rp ${paidVal.toLocaleString('id-ID')}`));
         printPayload.push(text(`Kembalian  : Rp ${changeVal.toLocaleString('id-ID')}`));
-
         printPayload.push(CMD_BOLD_ON, CMD_RIGHT);
         printPayload.push(text(`TOTAL BILL : Rp ${notaTotal.toLocaleString('id-ID')}`));
-
         printPayload.push(CMD_BOLD_OFF);
         printPayload.push(CMD_CENTER, text("================================"));
         printPayload.push(text("Scan untuk cek status pesanan:"));
         printPayload.push(text("\n"));
-        printPayload.push(CMD_QR_MODEL);
-        printPayload.push(CMD_QR_SIZE);
-        printPayload.push(CMD_QR_ERROR);
-        printPayload.push(CMD_QR_STORE);
-        printPayload.push(CMD_QR_PRINT);
+        printPayload.push(CMD_QR_MODEL, CMD_QR_SIZE, CMD_QR_ERROR, CMD_QR_STORE, CMD_QR_PRINT);
         printPayload.push(text("\n"));
-
         printPayload.push(text("Pakaian Bersih, Wangi & Rapi"));
         printPayload.push(text("Terima Kasih :)"));
         printPayload.push(CMD_FEED);
 
-        console.log('Mengirim data struk ke printer...');
-        for (const chunk of printPayload) {
-            await characteristic.writeValue(chunk);
-        }
-
+        for (const chunk of printPayload) { await characteristic.writeValue(chunk); }
         alert('✅ Struk & QR Code berhasil dicetak via Bluetooth');
         server.disconnect();
-
-    } catch (error) {
-        console.error("Gagal cetak bluetooth:", error);
-        alert('❌ Gagal print Bluetooth: ' + error.message);
-    }
+    } catch (error) { console.error("Gagal cetak bluetooth:", error); alert('❌ Gagal print Bluetooth: ' + error.message); }
 }
 
 function updatePaymentStatus(orderId, newPaymentStatus) {
     const orderIndex = orders.findIndex(o => o.id === orderId);
     if (orderIndex !== -1) {
         orders[orderIndex].paymentStatus = newPaymentStatus;
-        renderOrders();
-        calculateFinance();
-        
+        renderOrders(); calculateFinance();
         if (SCRIPT_URL !== "" && !SCRIPT_URL.includes("SCRIPT_URL")) {
-            fetch(SCRIPT_URL, { 
-                method: 'POST', 
-                mode: 'no-cors', 
-                headers: {'Content-Type': 'application/json'}, 
-                body: JSON.stringify({ 
-                    action: "updatePaymentStatus", 
-                    id: orderId, 
-                    paymentStatus: newPaymentStatus 
-                }) 
-            }).catch(err => console.log("Gagal sinkron cloud:", err));
+            fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ action: "updatePaymentStatus", id: orderId, paymentStatus: newPaymentStatus }) }).catch(err => console.log("Gagal sinkron cloud:", err));
         }
         triggerNotification(`Status pembayaran nota ${orderId} diubah menjadi: ${newPaymentStatus}`);
     }
 }
 
 // ===============================================================
-// LOGIKA DATABASE MULTI-CABANG (SIMPLE & ANTI CACHE)
+// LOGIKA DATABASE MULTI-CABANG (OTOMATIS DARI MASTER DB)
 // ===============================================================
-
-// 1. Simpan Link DB di Sini
-const BRANCH_CONFIG = [
-    {
-        id: "pusat",
-        name: "Forresa Pusat",
-        phone: "628987654321",
-        url: "https://script.google.com/macros/s/AKfycbwLFwAhLAOjnkDj9_eYLb5aOkNo8Q8ciTXYspgkYifYiIngDewKnHigeRWMNJMiTDQh0Q/exec",
-        pin: "1111"
-    },
-    {
-        id: "cabang2",
-        name: "Forresa Cabang 2",
-        phone: "628987654321",
-        url: "https://script.google.com/macros/s/AKfycbzNhYxoYV-ETD75g2enrY32JaAhdtE_pjiYOx30QWJ5DIzRZrXoOcWZ3XhUQnVEvacl/exec",
-        pin: "2222"
-    }
-];
-
-let targetBranch = null;
-
-// 2. Render Grid Tombol Cabang
 function loadSettingsUI() {
     const grid = document.getElementById('branch-grid');
     if (!grid) return;
 
-    grid.innerHTML = BRANCH_CONFIG.map(branch => {
-        // Cek mana yang sedang aktif berdasarkan memori lokal
+    if(!isMasterLoaded) {
+        grid.innerHTML = `<div class="col-span-2 text-center text-xs text-slate-400 py-4">Memuat sinkronisasi database cabang...</div>`;
+        syncMasterData().then(renderBranchList);
+    } else {
+        renderBranchList();
+    }
+}
+
+function renderBranchList() {
+    const grid = document.getElementById('branch-grid');
+    if (!grid) return;
+
+    if(masterBranches.length === 0) {
+        grid.innerHTML = `<div class="col-span-2 text-center text-xs text-slate-400 py-4 italic border border-dashed rounded-xl">Belum ada cabang terdaftar di Master DB.</div>`;
+        return;
+    }
+
+    grid.innerHTML = masterBranches.map(branch => {
         const isActive = localStorage.getItem('tenant_name') === branch.name;
         const bgStyle = isActive ? 'bg-cyan-50 border-[#40E0D0]' : 'bg-slate-50 border-slate-200';
         const textStatus = isActive ? 'SEDANG AKTIF' : 'PILIH CABANG';
 
         return `
-            <div onclick="openPinPrompt('${branch.id}')" class="p-4 rounded-2xl border cursor-pointer text-center transition-all active:scale-95 ${bgStyle}">
+            <div onclick="switchBranch('${branch.id}')" class="p-4 rounded-2xl border cursor-pointer text-center transition-all active:scale-95 ${bgStyle}">
                 <div class="w-8 h-8 ${isActive ? 'theme-bg text-white' : 'bg-white text-slate-400'} mx-auto rounded-full flex items-center justify-center mb-2 shadow-sm">
                     <i class="fa-solid fa-store"></i>
                 </div>
@@ -1228,117 +1016,51 @@ function loadSettingsUI() {
     }).join('');
 }
 
-// 3. Munculkan Input PIN (Generate langsung dari JS)
-function openPinPrompt(branchId) {
-    targetBranch = BRANCH_CONFIG.find(b => b.id === branchId);
-    if (!targetBranch) return;
+function switchBranch(branchId) {
+    const targetBranch = masterBranches.find(b => b.id === branchId);
+    if(!targetBranch) return;
 
-    // Kalau klik cabang yang sama, tolak.
     if (localStorage.getItem('tenant_name') === targetBranch.name) {
-        return alert('Database ' + targetBranch.name + ' sudah aktif digunakan saat ini.');
+        return alert(`Database ${targetBranch.name} sudah aktif digunakan saat ini.`);
     }
 
-    // Bersihkan modal lama jika nyangkut
-    const oldModal = document.getElementById('dynamicPinModal');
-    if (oldModal) oldModal.remove();
-
-    // Suntik HTML Layout PIN langsung ke layar
-    const modalHtml = `
-        <div id="dynamicPinModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div class="bg-white rounded-3xl p-6 w-full max-w-xs text-center space-y-4 shadow-2xl">
-                <div class="w-12 h-12 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center text-xl mx-auto mb-2 shadow-sm">
-                    <i class="fa-solid fa-lock"></i>
-                </div>
-                <div>
-                    <h3 class="font-bold text-slate-800 text-sm">Otorisasi Akses</h3>
-                    <p class="text-[10px] text-slate-400 mt-0.5">Masukkan PIN untuk ke ${targetBranch.name}</p>
-                </div>
-                
-                <input type="password" id="input-branch-pin" placeholder="••••" maxlength="6" inputmode="numeric" class="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center text-lg font-bold text-slate-800 outline-none focus:border-cyan-400 tracking-widest">
-                
-                <div class="grid grid-cols-2 gap-3 pt-2">
-                    <button onclick="document.getElementById('dynamicPinModal').remove()" class="w-full bg-slate-100 text-slate-500 font-bold py-3 rounded-xl text-xs hover:bg-slate-200">Batal</button>
-                    <button onclick="checkPinAndSwitchDB()" class="w-full theme-bg text-white font-bold py-3 rounded-xl text-xs shadow-md shadow-cyan-100 hover:opacity-90">Konfirmasi</button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    setTimeout(() => document.getElementById('input-branch-pin').focus(), 100);
-}
-
-// 4. Cek PIN -> Ganti Link DB -> Reload
-function checkPinAndSwitchDB() {
-    const inputPin = document.getElementById('input-branch-pin').value;
-    
-    if (inputPin === targetBranch.pin) {
-        // 1. Simpan akses baru ke memori browser
+    if(confirm(`Beralih koneksi kasir ke cabang: ${targetBranch.name}?`)) {
         localStorage.setItem('tenant_script_url', targetBranch.url);
         localStorage.setItem('tenant_name', targetBranch.name);
         if(targetBranch.phone) localStorage.setItem('tenant_phone', targetBranch.phone);
         
-        // 2. Perbarui variabel utama secara langsung (Hot-Swap)
         SCRIPT_URL = targetBranch.url;
         tenantName = targetBranch.name;
         if(targetBranch.phone) tenantPhone = targetBranch.phone;
         
-        // 3. Ubah nama toko di header dan struk secara langsung
-        if (typeof updateTenantUI === "function") updateTenantUI();
-        
-        // 4. Update warna tombol cabang menjadi "SEDANG AKTIF"
+        updateTenantUI();
         loadSettingsUI();
         
-        // 5. Tutup pop-up modal
-        document.getElementById('dynamicPinModal').remove();
+        services = []; customers = []; orders = []; expenses = []; cart = []; 
+        renderCart(); resetCashCalculationInputs();
         
-        // 6. Kosongkan data dari cabang sebelumnya
-        services = [];
-        customers = [];
-        orders = [];
-        expenses = [];
-        cart = []; 
-        renderCart(); 
-        resetCashCalculationInputs();
-
-        
-        // 7. Tarik data dari database cabang yang baru saja dipilih
         triggerNotification(`Memuat database ${tenantName}...`);
-        loadDataFromCloud(); 
-        
-    } else {
-        alert('❌ PIN yang Anda masukkan salah!');
-        document.getElementById('input-branch-pin').value = '';
-        document.getElementById('input-branch-pin').focus();
+        loadDataFromCloud();
     }
 }
-// Fungsi untuk mengupdate nama dan nomor HP toko di UI & Struk
+
 function updateTenantUI() {
-    // 1. Update semua elemen yang memiliki class 'tenant-name-display'
     const tenantDisplays = document.querySelectorAll('.tenant-name-display');
-    tenantDisplays.forEach(el => {
-        el.innerText = tenantName;
-    });
+    tenantDisplays.forEach(el => { el.innerText = tenantName; });
 
-    // 2. Update nomor telepon di struk nota
     const notaPhone = document.getElementById('nota-tenant-phone');
-    if (notaPhone) {
-        notaPhone.innerText = `Hub: +${tenantPhone}`;
-    }
+    if (notaPhone) { notaPhone.innerText = `Hub: +${tenantPhone}`; }
 }
-
 
 // ===============================================================
 // FITUR KEUANGAN TERPADU & PENGELUARAN 
 // ===============================================================
-
 function toggleFinanceFilterInputs() {
     const mode = document.getElementById('finance-filter-mode') ? document.getElementById('finance-filter-mode').value : 'today';
     const wrapDate = document.getElementById('wrapper-filter-date');
     const wrapMonth = document.getElementById('wrapper-filter-month');
     const wrapRange = document.getElementById('wrapper-filter-range'); 
 
-    // Sembunyikan semuanya terlebih dahulu
     if (wrapDate) wrapDate.classList.add('hidden');
     if (wrapMonth) wrapMonth.classList.add('hidden');
     if (wrapRange) wrapRange.classList.add('hidden');
@@ -1347,157 +1069,85 @@ function toggleFinanceFilterInputs() {
     const jktTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Jakarta"}));
     const todayStr = jktTime.toISOString().split('T')[0];
 
-    // Munculkan sesuai opsi yang dipilih kasir
     if (mode === 'date') {
         if (wrapDate) wrapDate.classList.remove('hidden');
-        if (document.getElementById('finance-input-date') && !document.getElementById('finance-input-date').value) {
-            document.getElementById('finance-input-date').value = todayStr;
-        }
+        if (document.getElementById('finance-input-date') && !document.getElementById('finance-input-date').value) { document.getElementById('finance-input-date').value = todayStr; }
     } else if (mode === 'month') {
         if (wrapMonth) wrapMonth.classList.remove('hidden');
         if (document.getElementById('finance-input-month') && !document.getElementById('finance-input-month').value) {
-            const year = jktTime.getFullYear();
-            const month = String(jktTime.getMonth() + 1).padStart(2, '0');
+            const year = jktTime.getFullYear(); const month = String(jktTime.getMonth() + 1).padStart(2, '0');
             document.getElementById('finance-input-month').value = `${year}-${month}`;
         }
     } else if (mode === 'range') {
         if (wrapRange) wrapRange.classList.remove('hidden'); 
-        // Isi otomatis start dan end dengan tanggal hari ini
-        if (document.getElementById('finance-input-start') && !document.getElementById('finance-input-start').value) {
-            document.getElementById('finance-input-start').value = todayStr;
-        }
-        if (document.getElementById('finance-input-end') && !document.getElementById('finance-input-end').value) {
-            document.getElementById('finance-input-end').value = todayStr;
-        }
+        if (document.getElementById('finance-input-start') && !document.getElementById('finance-input-start').value) { document.getElementById('finance-input-start').value = todayStr; }
+        if (document.getElementById('finance-input-end') && !document.getElementById('finance-input-end').value) { document.getElementById('finance-input-end').value = todayStr; }
     }
-    
-    // Hitung ulang keuangan setelah filter diganti
     if (typeof calculateFinance === "function") calculateFinance();
 }
 
 function calculateFinance() {
     const mode = document.getElementById('finance-filter-mode') ? document.getElementById('finance-filter-mode').value : 'today';
-    
     let filteredOrders = [...orders];
     let filteredExpenses = [...expenses];
-
-    // Dapatkan tanggal hari ini (Zona Waktu Jakarta)
     const now = new Date();
     const jktTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Jakarta"}));
-    const todayStr = jktTime.toISOString().split('T')[0]; // Format standar: YYYY-MM-DD
+    const todayStr = jktTime.toISOString().split('T')[0]; 
 
-    // Fungsi canggih untuk menyamakan format tanggal dari Google Sheets
     const parseDateString = (dateStr) => {
         if (!dateStr) return null;
         try {
             const d = new Date(dateStr);
-            if (isNaN(d.getTime())) return null; // Cegah error Invalid Date
-            
-            const year = d.getFullYear();
-            const month = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return { 
-                dateStr: `${year}-${month}-${day}`, 
-                monthStr: `${year}-${month}` 
-            };
-        } catch (e) {
-            return null;
-        }
+            if (isNaN(d.getTime())) return null; 
+            const year = d.getFullYear(); const month = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0');
+            return { dateStr: `${year}-${month}-${day}`, monthStr: `${year}-${month}` };
+        } catch (e) { return null; }
     };
 
-        // Proses Penyaringan Data (Filter)
     if (mode === 'today') {
-        filteredOrders = orders.filter(o => {
-            const parsed = parseDateString(o.date);
-            return parsed && parsed.dateStr === todayStr;
-        });
-        filteredExpenses = expenses.filter(e => {
-            const parsed = parseDateString(e.tanggal);
-            return parsed && parsed.dateStr === todayStr;
-        });
+        filteredOrders = orders.filter(o => { const parsed = parseDateString(o.date); return parsed && parsed.dateStr === todayStr; });
+        filteredExpenses = expenses.filter(e => { const parsed = parseDateString(e.tanggal); return parsed && parsed.dateStr === todayStr; });
     } else if (mode === 'date') {
         const pickerDate = document.getElementById('finance-input-date').value;
         if (pickerDate) {
-            filteredOrders = orders.filter(o => {
-                const parsed = parseDateString(o.date);
-                return parsed && parsed.dateStr === pickerDate;
-            });
-            filteredExpenses = expenses.filter(e => {
-                const parsed = parseDateString(e.tanggal);
-                return parsed && parsed.dateStr === pickerDate;
-            });
+            filteredOrders = orders.filter(o => { const parsed = parseDateString(o.date); return parsed && parsed.dateStr === pickerDate; });
+            filteredExpenses = expenses.filter(e => { const parsed = parseDateString(e.tanggal); return parsed && parsed.dateStr === pickerDate; });
         }
     } else if (mode === 'month') {
         const pickerMonth = document.getElementById('finance-input-month').value;
         if (pickerMonth) {
-            filteredOrders = orders.filter(o => {
-                const parsed = parseDateString(o.date);
-                return parsed && parsed.monthStr === pickerMonth;
-            });
-            filteredExpenses = expenses.filter(e => {
-                const parsed = parseDateString(e.tanggal);
-                return parsed && parsed.monthStr === pickerMonth;
-            });
+            filteredOrders = orders.filter(o => { const parsed = parseDateString(o.date); return parsed && parsed.monthStr === pickerMonth; });
+            filteredExpenses = expenses.filter(e => { const parsed = parseDateString(e.tanggal); return parsed && parsed.monthStr === pickerMonth; });
         }
-    } else if (mode === 'range') { // <--- INI BAGIAN TAMBAHANNYA
+    } else if (mode === 'range') { 
         const startDate = document.getElementById('finance-input-start').value;
         const endDate = document.getElementById('finance-input-end').value;
-        
-        // Hanya filter jika kedua tanggal sudah terisi
         if (startDate && endDate) {
-            // Set waktu start dari jam 00:00:00
-            const startObj = new Date(startDate);
-            startObj.setHours(0, 0, 0, 0); 
-            
-            // Set waktu end sampai jam 23:59:59
-            const endObj = new Date(endDate);
-            endObj.setHours(23, 59, 59, 999); 
+            const startObj = new Date(startDate); startObj.setHours(0, 0, 0, 0); 
+            const endObj = new Date(endDate); endObj.setHours(23, 59, 59, 999); 
 
-            filteredOrders = orders.filter(o => {
-                if (!o.date) return false;
-                const d = new Date(o.date);
-                return d >= startObj && d <= endObj;
-            });
-            
-            filteredExpenses = expenses.filter(e => {
-                if (!e.tanggal) return false;
-                const d = new Date(e.tanggal);
-                return d >= startObj && d <= endObj;
-            });
+            filteredOrders = orders.filter(o => { if (!o.date) return false; const d = new Date(o.date); return d >= startObj && d <= endObj; });
+            filteredExpenses = expenses.filter(e => { if (!e.tanggal) return false; const d = new Date(e.tanggal); return d >= startObj && d <= endObj; });
         }
     }
 
-
-    // Kalkulasi Total Uang
     const tIncome = filteredOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
     const tExpense = filteredExpenses.reduce((sum, e) => sum + (Number(e.nominal) || 0), 0);
     const netProfit = tIncome - tExpense;
-
-    // -------------------------------------------------------------
-    // RENDER ANGKA KE LAYAR (UI)
-    // -------------------------------------------------------------
     
     if(document.getElementById('rep-total-income')) document.getElementById('rep-total-income').innerText = `Rp ${tIncome.toLocaleString('id-ID')}`;
     if(document.getElementById('rep-orders-count')) document.getElementById('rep-orders-count').innerText = `${filteredOrders.length} Transaksi`;
-    
     if(document.getElementById('rep-total-expense')) document.getElementById('rep-total-expense').innerText = `Rp ${tExpense.toLocaleString('id-ID')}`;
     if(document.getElementById('rep-expense-count')) document.getElementById('rep-expense-count').innerText = `${filteredExpenses.length} Catatan`;
     
     const profitEl = document.getElementById('rep-net-profit');
     if(profitEl) {
         profitEl.innerText = `Rp ${netProfit.toLocaleString('id-ID')}`;
-        // Ubah warna text jika rugi / untung
-        profitEl.className = netProfit < 0 
-            ? "text-2xl font-extrabold tracking-tight text-rose-200" 
-            : "text-2xl font-extrabold tracking-tight text-white";
+        profitEl.className = netProfit < 0 ? "text-2xl font-extrabold tracking-tight text-rose-200" : "text-2xl font-extrabold tracking-tight text-white";
     }
 
-    // Panggil ulang daftar riwayat log yang di bawah layar
-    if (typeof renderFinanceLogs === "function") {
-        renderFinanceLogs(filteredOrders, filteredExpenses);
-    }
+    if (typeof renderFinanceLogs === "function") { renderFinanceLogs(filteredOrders, filteredExpenses); }
 }
-
 
 function renderFinanceLogs(oData, eData) {
     const listInc = document.getElementById('log-container-income');
@@ -1542,26 +1192,15 @@ function switchLogTab(tabId) {
     }
 }
 
-// ========================================================================
-// FUNGSI PENGELUARAN (TAMPILAN INLINE & CRUD DATABASE)
-// ========================================================================
-
-// 1. Fungsi Toggle -> Memunculkan/Menyembunyikan Layout Form Input
 function toggleExpenseForm() {
     const form = document.getElementById('inline-expense-form');
-    
     if (form.classList.contains('hidden')) {
-        form.classList.remove('hidden'); // Tampilkan form
-        // Reset isian sebelumnya
-        document.getElementById('expense-name').value = '';
-        document.getElementById('expense-amount').value = '';
+        form.classList.remove('hidden'); 
+        document.getElementById('expense-name').value = ''; document.getElementById('expense-amount').value = '';
         document.getElementById('expense-name').focus();
-    } else {
-        form.classList.add('hidden'); // Sembunyikan form
-    }
+    } else { form.classList.add('hidden'); }
 }
 
-// 2. Fungsi CREATE -> Menyimpan ke Web & Mengirim ke Database (Google Sheets)
 function saveNewExpense() {
     const name = document.getElementById('expense-name').value.trim();
     const amount = parseFloat(document.getElementById('expense-amount').value);
@@ -1569,58 +1208,28 @@ function saveNewExpense() {
 
     if (!name || isNaN(amount)) return alert('❌ Keterangan dan nominal pengeluaran wajib diisi!');
 
-    // Format data pengeluaran
-    const payload = { 
-        id: `EXP-${Math.floor(1000 + Math.random() * 9000)}`, 
-        tanggal: new Date().toISOString(), 
-        keterangan: name, 
-        nominal: amount, 
-        sumber_dana: source 
-    };
+    const payload = { id: `EXP-${Math.floor(1000 + Math.random() * 9000)}`, tanggal: new Date().toISOString(), keterangan: name, nominal: amount, sumber_dana: source };
     
-    // Tambahkan ke memori web dan update saldo laba bersih
     expenses.unshift(payload); 
     if (typeof calculateFinance === "function") calculateFinance(); 
-    
-    // Sembunyikan form inline kembali setelah menyimpan
     document.getElementById('inline-expense-form').classList.add('hidden');
 
-    // Proses sinkronisasi otomatis ke Google Sheets
     if (SCRIPT_URL !== "" && !SCRIPT_URL.includes("SCRIPT_URL")) {
-        fetch(SCRIPT_URL, { 
-            method: 'POST', 
-            mode: 'no-cors', 
-            headers: {'Content-Type': 'application/json'}, 
-            body: JSON.stringify({ action: "addExpense", ...payload }) 
-        }).catch(e => console.log("Gagal sinkron ke database:", e));
+        fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ action: "addExpense", ...payload }) }).catch(e => console.log("Gagal sinkron ke database:", e));
     }
-    
     triggerNotification(`✅ Pengeluaran "${name}" sukses dicatat!`);
 }
 
-// 3. Fungsi DELETE -> Menghapus di Web & Menghapus di Database (Google Sheets)
 function deleteExpense(expId) {
     if(!confirm("Hapus catatan pengeluaran ini secara permanen dari sistem?")) return;
-    
-    // Hapus dari memori web
     expenses = expenses.filter(e => e.id !== expId);
-    
-    // Kalkulasi ulang keuangan (update layar)
     if (typeof calculateFinance === "function") calculateFinance(); 
     
-    // Proses hapus baris di Google Sheets (jika URL terhubung)
     if (SCRIPT_URL !== "" && !SCRIPT_URL.includes("SCRIPT_URL")) {
-        fetch(SCRIPT_URL, { 
-            method: 'POST', 
-            mode: 'no-cors', 
-            headers: {'Content-Type': 'application/json'}, 
-            body: JSON.stringify({ action: "deleteExpense", id: expId }) 
-        }).catch(e => console.log("Gagal hapus di database:", e));
+        fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ action: "deleteExpense", id: expId }) }).catch(e => console.log("Gagal hapus di database:", e));
     }
-    
     triggerNotification("✅ Data pengeluaran berhasil dihapus.");
 }
-
 
 function exportFinanceToExcel() {
     if(orders.length === 0 && expenses.length === 0) return alert('Data masih kosong!');
