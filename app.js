@@ -1123,6 +1123,9 @@ function calculateFinance() {
         } catch (e) { return null; }
     };
 
+    // ==========================================
+    // 1. LAKUKAN FILTERING DATA TERLEBIH DAHULU
+    // ==========================================
     if (mode === 'today') {
         filteredOrders = orders.filter(o => {
             const parsed = parseDateString(o.date);
@@ -1177,10 +1180,34 @@ function calculateFinance() {
         }
     }
 
+    // ==========================================
+    // 2. HITUNG METODE PEMBAYARAN DARI DATA FILTER
+    // ==========================================
+    const tTunai = filteredOrders
+        .filter(o => o.method === 'Tunai / Cash')
+        .reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+
+    const tQris = filteredOrders
+        .filter(o => o.method === 'QRIS')
+        .reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+
+    const tTransfer = filteredOrders
+        .filter(o => o.method === 'Transfer Bank')
+        .reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+
+    // Update Angka UI Metode Pembayaran
+    if(document.getElementById('rep-tunai')) document.getElementById('rep-tunai').innerText = `Rp ${tTunai.toLocaleString('id-ID')}`;
+    if(document.getElementById('rep-qris')) document.getElementById('rep-qris').innerText = `Rp ${tQris.toLocaleString('id-ID')}`;
+    if(document.getElementById('rep-transfer')) document.getElementById('rep-transfer').innerText = `Rp ${tTransfer.toLocaleString('id-ID')}`;
+
+    // ==========================================
+    // 3. HITUNG TOTAL KEUANGAN KESELURUHAN
+    // ==========================================
     const tIncome = filteredOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
     const tExpense = filteredExpenses.reduce((sum, e) => sum + (Number(e.nominal) || 0), 0);
     const netProfit = tIncome - tExpense;
     
+    // Update Angka UI Total Keuangan
     if(document.getElementById('rep-total-income')) document.getElementById('rep-total-income').innerText = `Rp ${tIncome.toLocaleString('id-ID')}`;
     if(document.getElementById('rep-orders-count')) document.getElementById('rep-orders-count').innerText = `${filteredOrders.length} Transaksi`;
     if(document.getElementById('rep-total-expense')) document.getElementById('rep-total-expense').innerText = `Rp ${tExpense.toLocaleString('id-ID')}`;
@@ -1192,6 +1219,7 @@ function calculateFinance() {
         profitEl.className = netProfit < 0 ? "text-2xl font-extrabold tracking-tight text-rose-200" : "text-2xl font-extrabold tracking-tight text-white";
     }
 
+    // Panggil fungsi untuk me-render daftar log masuk/keluar
     if (typeof renderFinanceLogs === "function") { renderFinanceLogs(filteredOrders, filteredExpenses); }
 }
 
@@ -1199,7 +1227,7 @@ function renderFinanceLogs(oData, eData) {
     const listInc = document.getElementById('log-container-income');
     const listExp = document.getElementById('log-container-expense');
 
-    // 1. URUTKAN DATA: Paling baru (tanggal besar) ke paling atas
+    // URUTKAN DATA: Paling baru ke paling atas
     const sortedIncome = [...oData].sort((a, b) => new Date(b.date) - new Date(a.date));
     const sortedExpense = [...eData].sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
 
@@ -1218,17 +1246,21 @@ function renderFinanceLogs(oData, eData) {
             </div>`).join('');
     }
 
-    // === RENDER LOG PENGELUARAN ===
+    // === RENDER LOG PENGELUARAN (DENGAN SUMBER DANA) ===
     if (listExp) {
         listExp.innerHTML = sortedExpense.length === 0 ? `<p class="text-center text-xs text-slate-400 py-3">Tidak ada catatan pengeluaran.</p>` : sortedExpense.map(e => `
             <div class="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl mb-2 border border-slate-100">
                 <div>
                     <p class="font-bold text-slate-700 text-xs">${e.keterangan}</p>
-                    <p class="text-[10px] text-slate-400 mt-0.5"><i class="fa-regular fa-calendar-days text-[9px] mr-0.5"></i> ${formatTanggalIndo(e.tanggal)}</p>
+                    <p class="text-[10px] text-slate-400 mt-0.5 mb-1"><i class="fa-regular fa-calendar-days text-[9px] mr-0.5"></i> ${formatTanggalIndo(e.tanggal)}</p>
+                    
+                    <span class="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 bg-rose-50 text-rose-500 border border-rose-100 rounded text-[9px] font-bold">
+                        <i class="fa-solid fa-wallet text-[8px]"></i> ${e.sumber_dana || 'Kas Laci (Tunai)'}
+                    </span>
                 </div>
                 <div class="flex items-center gap-2">
                     <p class="font-bold text-rose-500 text-xs">-Rp ${Number(e.nominal).toLocaleString('id-ID')}</p>
-                    <button onclick="deleteExpense('${e.id}')" class="text-rose-400 hover:text-rose-600 bg-rose-50 px-2 py-1 rounded"><i class="fa-solid fa-trash text-[10px]"></i></button>
+                    <button onclick="deleteExpense('${e.id}')" class="text-rose-400 hover:text-rose-600 bg-white border border-rose-100 shadow-sm px-2 py-1 rounded-lg"><i class="fa-solid fa-trash text-[10px]"></i></button>
                 </div>
             </div>`).join('');
     }
