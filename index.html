@@ -21,7 +21,7 @@
 
         <div class="w-full bg-white rounded-3xl border border-slate-100 shadow-xl p-6 relative z-10 space-y-6">
             <div class="text-center space-y-1">
-                <div class="w-55 h-30 mx-auto mb-4 flex items-center justify-center">
+                <div class="w-70 h-30 mx-auto mb-4 flex items-center justify-center">
                     <img src="logo/foresa.png" alt="Logo Foresa" class="w-full h-full object-contain">
                 </div>
                 <h2 class="text-base font-extrabold text-slate-800 tracking-wide uppercase pt-2 tenant-name-display">Forresa Laundry POS</h2>
@@ -323,6 +323,21 @@
                             </div>
                         </div>
                     </div>
+                    <p class="text-slate-400 text-xs">Pembayaran yang diterima </p>
+                    <div class="grid grid-cols-3 gap-2 mb-4">
+    <div class="bg-white p-3 rounded-2xl border border-slate-100 shadow-sm text-center">
+        <span class="text-[9px] font-bold text-slate-400 block uppercase">Tunai</span>
+        <h4 id="rep-tunai" class="text-xs font-extrabold text-slate-800 mt-1">Rp 0</h4>
+    </div>
+    <div class="bg-white p-3 rounded-2xl border border-slate-100 shadow-sm text-center">
+        <span class="text-[9px] font-bold text-slate-400 block uppercase">QRIS</span>
+        <h4 id="rep-qris" class="text-xs font-extrabold text-slate-800 mt-1">Rp 0</h4>
+    </div>
+    <div class="bg-white p-3 rounded-2xl border border-slate-100 shadow-sm text-center">
+        <span class="text-[9px] font-bold text-slate-400 block uppercase">Debit/Trf</span>
+        <h4 id="rep-transfer" class="text-xs font-extrabold text-slate-800 mt-1">Rp 0</h4>
+    </div>
+</div>
 
                     <div class="grid grid-cols-2 gap-3">
                         <button onclick="toggleExpenseForm()" class="w-full bg-rose-50 text-rose-500 border border-rose-100 font-bold py-3 rounded-xl text-xs hover:bg-rose-100 transition-all flex justify-center items-center gap-1.5">
