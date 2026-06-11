@@ -1016,6 +1016,8 @@ function renderBranchList() {
     }).join('');
 }
 
+let targetBranchForAuth = null;
+
 function switchBranch(branchId) {
     const targetBranch = masterBranches.find(b => b.id === branchId);
     if(!targetBranch) return;
@@ -1024,15 +1026,44 @@ function switchBranch(branchId) {
         return alert(`Database ${targetBranch.name} sudah aktif digunakan saat ini.`);
     }
 
-    if(confirm(`Beralih koneksi kasir ke cabang: ${targetBranch.name}?`)) {
-        localStorage.setItem('tenant_script_url', targetBranch.url);
-        localStorage.setItem('tenant_name', targetBranch.name);
-        if(targetBranch.phone) localStorage.setItem('tenant_phone', targetBranch.phone);
+    // MUNCULKAN MODAL PIN (Bukan lagi pakai confirm)
+    targetBranchForAuth = targetBranch;
+    document.getElementById('auth-branch-name').innerText = targetBranch.name;
+    document.getElementById('auth-branch-pin').value = '';
+    document.getElementById('branchAuthModal').classList.remove('hidden');
+    
+    // Auto-focus ke input PIN
+    setTimeout(() => document.getElementById('auth-branch-pin').focus(), 100);
+}
+
+// ===============================================================
+// FUNGSI BARU: LOGIKA MODAL PIN CABANG
+// ===============================================================
+function closeBranchAuthModal() {
+    document.getElementById('branchAuthModal').classList.add('hidden');
+    targetBranchForAuth = null;
+}
+
+function verifyBranchPin() {
+    if (!targetBranchForAuth) return;
+    
+    const inputPin = document.getElementById('auth-branch-pin').value;
+    
+    if (!inputPin) return alert("PIN cabang tidak boleh kosong!");
+    
+    // Validasi PIN (Pastikan tipe datanya sama-sama string)
+    if (String(targetBranchForAuth.pin) === String(inputPin)) {
         
-        SCRIPT_URL = targetBranch.url;
-        tenantName = targetBranch.name;
-        if(targetBranch.phone) tenantPhone = targetBranch.phone;
+        // JIKA PIN BENAR -> Lakukan proses pindah cabang
+        localStorage.setItem('tenant_script_url', targetBranchForAuth.url);
+        localStorage.setItem('tenant_name', targetBranchForAuth.name);
+        if(targetBranchForAuth.phone) localStorage.setItem('tenant_phone', targetBranchForAuth.phone);
         
+        SCRIPT_URL = targetBranchForAuth.url;
+        tenantName = targetBranchForAuth.name;
+        if(targetBranchForAuth.phone) tenantPhone = targetBranchForAuth.phone;
+        
+        closeBranchAuthModal();
         updateTenantUI();
         loadSettingsUI();
         
@@ -1041,6 +1072,14 @@ function switchBranch(branchId) {
         
         triggerNotification(`Memuat database ${tenantName}...`);
         loadDataFromCloud();
+        
+        // (Opsional) Langsung pindah ke halaman kasir setelah sukses
+        switchView('pos');
+        
+    } else {
+        // JIKA PIN SALAH
+        alert("PIN Cabang Salah! Silakan coba lagi.");
+        document.getElementById('auth-branch-pin').value = ''; // Kosongkan input
     }
 }
 
@@ -1366,4 +1405,55 @@ function formatTanggalIndo(dateStr) {
     const d = new Date(dateStr);
     const pad = (n) => n.toString().padStart(2, '0');
     return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// ==========================================================================
+// OTORISASI CABANG DI HALAMAN SETTINGS (KASIR)
+// ==========================================================================
+
+function saveCashierSettings() {
+    const branchUrl = document.getElementById('setting-select-branch').value;
+    const pinInput = document.getElementById('setting-input-pin').value;
+    
+    if (!branchUrl) return alert("Silakan pilih lokasi cabang terlebih dahulu!");
+    if (!pinInput) return alert("PIN Cabang tidak boleh kosong!");
+    
+    // 1. Cari data cabang berdasarkan URL yang dipilih di Dropdown
+    const selectedBranch = branches.find(b => b.url === branchUrl);
+    
+    if (!selectedBranch) return alert("Data cabang tidak ditemukan!");
+
+    // 2. Validasi apakah PIN yang dimasukkan cocok dengan PIN Cabang tersebut
+    if (selectedBranch.pin === pinInput) {
+        
+        // PIN Benar -> Simpan koneksi ke browser
+        localStorage.setItem('tenant_script_url', selectedBranch.url);
+        localStorage.setItem('tenant_name', selectedBranch.name);
+        
+        // Atur URL database aplikasi ke cabang yang dipilih
+        SCRIPT_URL = selectedBranch.url;
+        
+        // Kosongkan form PIN demi keamanan
+        document.getElementById('setting-input-pin').value = '';
+        
+        // Tampilkan notifikasi sukses
+        if(typeof triggerNotification === "function") {
+            triggerNotification(`Perangkat terhubung ke ${selectedBranch.name}`);
+        } else {
+            alert(`Berhasil terhubung ke ${selectedBranch.name}`);
+        }
+        
+        // Muat (Download) data transaksi dari cabang tersebut
+        fetchData(); 
+        
+        // Otomatis pindah ke Tab Kasir / POS setelah berhasil terhubung
+        if(typeof switchTab === "function") {
+            switchTab('pos');
+        }
+        
+    } else {
+        // PIN Salah
+        alert("PIN Cabang Salah! Hubungi Owner jika Anda lupa PIN.");
+        document.getElementById('setting-input-pin').value = ''; // Kosongkan input
+    }
 }
