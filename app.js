@@ -1067,67 +1067,113 @@ function toggleFinanceFilterInputs() {
 
     const now = new Date();
     const jktTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Jakarta"}));
-    const todayStr = jktTime.toISOString().split('T')[0];
+    
+    // PERBAIKAN BUG TANGGAL: Ambil waktu lokal, BUKAN UTC toISOString
+    const y = jktTime.getFullYear();
+    const m = String(jktTime.getMonth() + 1).padStart(2, '0');
+    const d = String(jktTime.getDate()).padStart(2, '0');
+    const todayStr = `${y}-${m}-${d}`;
 
     if (mode === 'date') {
         if (wrapDate) wrapDate.classList.remove('hidden');
-        if (document.getElementById('finance-input-date') && !document.getElementById('finance-input-date').value) { document.getElementById('finance-input-date').value = todayStr; }
+        if (document.getElementById('finance-input-date') && !document.getElementById('finance-input-date').value) {
+            document.getElementById('finance-input-date').value = todayStr;
+        }
     } else if (mode === 'month') {
         if (wrapMonth) wrapMonth.classList.remove('hidden');
         if (document.getElementById('finance-input-month') && !document.getElementById('finance-input-month').value) {
-            const year = jktTime.getFullYear(); const month = String(jktTime.getMonth() + 1).padStart(2, '0');
-            document.getElementById('finance-input-month').value = `${year}-${month}`;
+            document.getElementById('finance-input-month').value = `${y}-${m}`;
         }
     } else if (mode === 'range') {
         if (wrapRange) wrapRange.classList.remove('hidden'); 
-        if (document.getElementById('finance-input-start') && !document.getElementById('finance-input-start').value) { document.getElementById('finance-input-start').value = todayStr; }
-        if (document.getElementById('finance-input-end') && !document.getElementById('finance-input-end').value) { document.getElementById('finance-input-end').value = todayStr; }
+        if (document.getElementById('finance-input-start') && !document.getElementById('finance-input-start').value) {
+            document.getElementById('finance-input-start').value = todayStr;
+        }
+        if (document.getElementById('finance-input-end') && !document.getElementById('finance-input-end').value) {
+            document.getElementById('finance-input-end').value = todayStr;
+        }
     }
     if (typeof calculateFinance === "function") calculateFinance();
 }
 
 function calculateFinance() {
     const mode = document.getElementById('finance-filter-mode') ? document.getElementById('finance-filter-mode').value : 'today';
+    
     let filteredOrders = [...orders];
     let filteredExpenses = [...expenses];
+
     const now = new Date();
     const jktTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Jakarta"}));
-    const todayStr = jktTime.toISOString().split('T')[0]; 
+    
+    // PERBAIKAN BUG TANGGAL: Mencegah data hilang karena perbedaan jam server
+    const y = jktTime.getFullYear();
+    const m = String(jktTime.getMonth() + 1).padStart(2, '0');
+    const d = String(jktTime.getDate()).padStart(2, '0');
+    const todayStr = `${y}-${m}-${d}`; 
 
     const parseDateString = (dateStr) => {
         if (!dateStr) return null;
         try {
-            const d = new Date(dateStr);
-            if (isNaN(d.getTime())) return null; 
-            const year = d.getFullYear(); const month = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0');
-            return { dateStr: `${year}-${month}-${day}`, monthStr: `${year}-${month}` };
+            const dt = new Date(dateStr);
+            if (isNaN(dt.getTime())) return null; 
+            const yr = dt.getFullYear();
+            const mo = String(dt.getMonth() + 1).padStart(2, '0');
+            const dy = String(dt.getDate()).padStart(2, '0');
+            return { dateStr: `${yr}-${mo}-${dy}`, monthStr: `${yr}-${mo}` };
         } catch (e) { return null; }
     };
 
     if (mode === 'today') {
-        filteredOrders = orders.filter(o => { const parsed = parseDateString(o.date); return parsed && parsed.dateStr === todayStr; });
-        filteredExpenses = expenses.filter(e => { const parsed = parseDateString(e.tanggal); return parsed && parsed.dateStr === todayStr; });
+        filteredOrders = orders.filter(o => {
+            const parsed = parseDateString(o.date);
+            return parsed && parsed.dateStr === todayStr;
+        });
+        filteredExpenses = expenses.filter(e => {
+            const parsed = parseDateString(e.tanggal);
+            return parsed && parsed.dateStr === todayStr;
+        });
     } else if (mode === 'date') {
         const pickerDate = document.getElementById('finance-input-date').value;
         if (pickerDate) {
-            filteredOrders = orders.filter(o => { const parsed = parseDateString(o.date); return parsed && parsed.dateStr === pickerDate; });
-            filteredExpenses = expenses.filter(e => { const parsed = parseDateString(e.tanggal); return parsed && parsed.dateStr === pickerDate; });
+            filteredOrders = orders.filter(o => {
+                const parsed = parseDateString(o.date);
+                return parsed && parsed.dateStr === pickerDate;
+            });
+            filteredExpenses = expenses.filter(e => {
+                const parsed = parseDateString(e.tanggal);
+                return parsed && parsed.dateStr === pickerDate;
+            });
         }
     } else if (mode === 'month') {
         const pickerMonth = document.getElementById('finance-input-month').value;
         if (pickerMonth) {
-            filteredOrders = orders.filter(o => { const parsed = parseDateString(o.date); return parsed && parsed.monthStr === pickerMonth; });
-            filteredExpenses = expenses.filter(e => { const parsed = parseDateString(e.tanggal); return parsed && parsed.monthStr === pickerMonth; });
+            filteredOrders = orders.filter(o => {
+                const parsed = parseDateString(o.date);
+                return parsed && parsed.monthStr === pickerMonth;
+            });
+            filteredExpenses = expenses.filter(e => {
+                const parsed = parseDateString(e.tanggal);
+                return parsed && parsed.monthStr === pickerMonth;
+            });
         }
     } else if (mode === 'range') { 
         const startDate = document.getElementById('finance-input-start').value;
         const endDate = document.getElementById('finance-input-end').value;
+        
         if (startDate && endDate) {
             const startObj = new Date(startDate); startObj.setHours(0, 0, 0, 0); 
             const endObj = new Date(endDate); endObj.setHours(23, 59, 59, 999); 
 
-            filteredOrders = orders.filter(o => { if (!o.date) return false; const d = new Date(o.date); return d >= startObj && d <= endObj; });
-            filteredExpenses = expenses.filter(e => { if (!e.tanggal) return false; const d = new Date(e.tanggal); return d >= startObj && d <= endObj; });
+            filteredOrders = orders.filter(o => {
+                if (!o.date) return false;
+                const dObj = new Date(o.date);
+                return dObj >= startObj && dObj <= endObj;
+            });
+            filteredExpenses = expenses.filter(e => {
+                if (!e.tanggal) return false;
+                const dObj = new Date(e.tanggal);
+                return dObj >= startObj && dObj <= endObj;
+            });
         }
     }
 
@@ -1153,20 +1199,35 @@ function renderFinanceLogs(oData, eData) {
     const listInc = document.getElementById('log-container-income');
     const listExp = document.getElementById('log-container-expense');
 
+    // 1. URUTKAN DATA: Paling baru (tanggal besar) ke paling atas
+    const sortedIncome = [...oData].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const sortedExpense = [...eData].sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+
+    // === RENDER LOG PEMASUKAN ===
     if (listInc) {
-        listInc.innerHTML = oData.length === 0 ? `<p class="text-center text-xs text-slate-400 py-3">Tidak ada catatan pemasukan.</p>` : oData.map(o => `
+        listInc.innerHTML = sortedIncome.length === 0 ? `<p class="text-center text-xs text-slate-400 py-3">Tidak ada catatan pemasukan.</p>` : sortedIncome.map(o => `
             <div class="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl mb-2 border border-slate-100">
-                <div><p class="font-bold text-slate-700 text-xs">${o.customer}</p><p class="text-[10px] text-slate-400">${o.service}</p></div>
-                <div class="text-right"><p class="font-bold text-emerald-600 text-xs">+Rp ${o.total.toLocaleString('id-ID')}</p></div>
+                <div>
+                    <p class="font-bold text-slate-700 text-xs">${o.customer}</p>
+                    <p class="text-[10px] text-slate-400">${o.service}</p>
+                    <p class="text-[10px] text-slate-400 mt-0.5"><i class="fa-regular fa-calendar-days text-[9px] mr-0.5"></i> ${formatTanggalIndo(o.date)}</p>
+                </div>
+                <div class="text-right">
+                    <p class="font-bold text-emerald-600 text-xs">+Rp ${Number(o.total).toLocaleString('id-ID')}</p>
+                </div>
             </div>`).join('');
     }
 
+    // === RENDER LOG PENGELUARAN ===
     if (listExp) {
-        listExp.innerHTML = eData.length === 0 ? `<p class="text-center text-xs text-slate-400 py-3">Tidak ada catatan pengeluaran.</p>` : eData.map(e => `
+        listExp.innerHTML = sortedExpense.length === 0 ? `<p class="text-center text-xs text-slate-400 py-3">Tidak ada catatan pengeluaran.</p>` : sortedExpense.map(e => `
             <div class="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl mb-2 border border-slate-100">
-                <div><p class="font-bold text-slate-700 text-xs">${e.keterangan}</p></div>
+                <div>
+                    <p class="font-bold text-slate-700 text-xs">${e.keterangan}</p>
+                    <p class="text-[10px] text-slate-400 mt-0.5"><i class="fa-regular fa-calendar-days text-[9px] mr-0.5"></i> ${formatTanggalIndo(e.tanggal)}</p>
+                </div>
                 <div class="flex items-center gap-2">
-                    <p class="font-bold text-rose-500 text-xs">-Rp ${e.nominal.toLocaleString('id-ID')}</p>
+                    <p class="font-bold text-rose-500 text-xs">-Rp ${Number(e.nominal).toLocaleString('id-ID')}</p>
                     <button onclick="deleteExpense('${e.id}')" class="text-rose-400 hover:text-rose-600 bg-rose-50 px-2 py-1 rounded"><i class="fa-solid fa-trash text-[10px]"></i></button>
                 </div>
             </div>`).join('');
@@ -1208,15 +1269,31 @@ function saveNewExpense() {
 
     if (!name || isNaN(amount)) return alert('❌ Keterangan dan nominal pengeluaran wajib diisi!');
 
-    const payload = { id: `EXP-${Math.floor(1000 + Math.random() * 9000)}`, tanggal: new Date().toISOString(), keterangan: name, nominal: amount, sumber_dana: source };
+    const payload = { 
+        id: `EXP-${Math.floor(1000 + Math.random() * 9000)}`, 
+        tanggal: new Date().toISOString(), 
+        keterangan: name, 
+        nominal: amount, 
+        sumber_dana: source 
+    };
     
     expenses.unshift(payload); 
     if (typeof calculateFinance === "function") calculateFinance(); 
+    
     document.getElementById('inline-expense-form').classList.add('hidden');
 
+    // FIX TAMPILAN: Langsung pindah ke tab pengeluaran agar data yang baru diinput terlihat
+    if (typeof switchLogTab === "function") switchLogTab('expense');
+
     if (SCRIPT_URL !== "" && !SCRIPT_URL.includes("SCRIPT_URL")) {
-        fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ action: "addExpense", ...payload }) }).catch(e => console.log("Gagal sinkron ke database:", e));
+        fetch(SCRIPT_URL, { 
+            method: 'POST', 
+            mode: 'no-cors', 
+            headers: {'Content-Type': 'application/json'}, 
+            body: JSON.stringify({ action: "addExpense", ...payload }) 
+        }).catch(e => console.log("Gagal sinkron ke database:", e));
     }
+    
     triggerNotification(`✅ Pengeluaran "${name}" sukses dicatat!`);
 }
 
