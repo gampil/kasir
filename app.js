@@ -666,9 +666,36 @@ function sendWhatsAppReceipt() {
     else { window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(messageText)}`, '_blank'); }
 }
 
+// ====================================================================
+// FUNGSI PENCARIAN & UPDATE (VERSI OPTIMASI ANTI-MACET + LOADING)
+// ====================================================================
+
+// Variabel penahan waktu agar tidak macet saat ngetik
+let searchTimeout = null; 
+
 function searchByQR(val) {
-    let q = val.toUpperCase();
-    document.querySelectorAll('#orders-list > div').forEach(c => { c.innerText.toUpperCase().includes(q) ? c.classList.remove('hidden') : c.classList.add('hidden'); });
+    // 1. Isi kotak input secara otomatis jika fungsi dipanggil dari tombol "Lunasi"
+    const searchInput = document.querySelector('#view-orders input[type="text"]');
+    if (searchInput && searchInput.value !== val) {
+        searchInput.value = val;
+    }
+
+    // 2. Munculkan efek "Loading Kotak Berkedip (Skeleton)" agar terlihat mulus
+    const ordersList = document.getElementById('orders-list');
+    if (ordersList) {
+        ordersList.innerHTML = `
+            <div class="bg-slate-200 rounded-2xl h-36 w-full animate-pulse"></div>
+            <div class="bg-slate-200 rounded-2xl h-36 w-full animate-pulse"></div>
+            <div class="bg-slate-200 rounded-2xl h-36 w-full animate-pulse hidden sm:block"></div>`;
+    }
+
+    // 3. Batalkan pencarian sebelumnya jika user masih ngetik
+    if (searchTimeout) clearTimeout(searchTimeout);
+    
+    // 4. Tunggu 0.4 detik setelah berhenti ngetik, baru lakukan pencarian (Teknik Debounce)
+    searchTimeout = setTimeout(() => {
+        renderOrders(); 
+    }, 400); 
 }
 
 function renderOrders() {
@@ -676,7 +703,7 @@ function renderOrders() {
     if(!ordersList) return;
 
     if (isLoading) {
-        ordersList.innerHTML = `<div class="bg-slate-200 rounded-2xl h-36 animate-pulse"></div><div class="bg-slate-200 rounded-2xl h-36 animate-pulse"></div><div class="bg-slate-200 rounded-2xl h-36 animate-pulse"></div>`;
+        ordersList.innerHTML = `<div class="bg-slate-200 rounded-2xl h-36 animate-pulse"></div><div class="bg-slate-200 rounded-2xl h-36 animate-pulse"></div>`;
         return;
     }
 
@@ -685,7 +712,32 @@ function renderOrders() {
         return;
     }
     
-    ordersList.innerHTML = orders.map(o => {
+    // 1. Ambil kata kunci pencarian dari kotak input
+    const searchInput = document.querySelector('#view-orders input[type="text"]');
+    const q = searchInput ? searchInput.value.trim().toUpperCase() : "";
+
+    // 2. Filter data secara pintar!
+    let displayOrders = [];
+    
+    if (q !== "") {
+        // JIKA ADA PENCARIAN: Cari di KESELURUHAN ARRAY DATABASE (Misal 200 data)
+        displayOrders = orders.filter(o => 
+            (o.id && o.id.toUpperCase().includes(q)) || 
+            (o.customer && o.customer.toUpperCase().includes(q)) || 
+            (o.phone && o.phone.includes(q))
+        );
+    } else {
+        // JIKA TIDAK MENCARI: Batasi tampilan HANYA 50 data nota terbaru agar web ngebut
+        displayOrders = orders.slice(0, 50);
+    }
+
+    if (displayOrders.length === 0) {
+        ordersList.innerHTML = `<div class="col-span-full text-center italic text-slate-400 py-8 border border-dashed rounded-2xl border-slate-200">Tidak ada nota yang cocok dengan pencarian <br><b>"${q}"</b>.</div>`;
+        return;
+    }
+    
+    // 3. Render HTML Data
+    ordersList.innerHTML = displayOrders.map(o => {
         let badgeColor = "bg-amber-50 text-amber-600";
         if (o.status === 'Selesai') badgeColor = "bg-cyan-50 text-cyan-600";
         if (o.status === 'Diambil') badgeColor = "bg-green-50 text-green-600";
@@ -720,6 +772,11 @@ function renderOrders() {
                         <option value="Lunas" ${o.paymentStatus === 'Lunas' ? 'selected' : ''}>✔️ Lunas</option>
                         <option value="Belum Bayar" ${o.paymentStatus === 'Belum Bayar' ? 'selected' : ''}>🔴 Belum Bayar</option>
                     </select>
+                    <select onchange="updatePaymentMethod('${o.id}', this.value)" class="w-full text-[11px] bg-indigo-50 border border-indigo-100 rounded-lg p-1.5 font-semibold text-indigo-700 outline-none focus:border-indigo-400 mt-1.5">
+                        <option value="Tunai / Cash" ${o.method === 'Tunai / Cash' ? 'selected' : ''}>💵 Tunai / Cash</option>
+                        <option value="QRIS" ${o.method === 'QRIS' ? 'selected' : ''}>📱 QRIS</option>
+                        <option value="Transfer Bank" ${o.method === 'Transfer Bank' ? 'selected' : ''}>💳 Transfer Bank</option>
+                    </select>
                 </div>
                 <div class="flex justify-between items-center pt-2">
                     <span class="text-xs font-bold theme-color">Rp ${o.total.toLocaleString('id-ID')}</span>
@@ -732,15 +789,41 @@ function renderOrders() {
     }).join('');
 }
 
+
+
+function updatePaymentMethod(orderId, newMethod) {
+    const orderIndex = orders.findIndex(o => o.id === orderId);
+    if (orderIndex !== -1) {
+        orders[orderIndex].method = newMethod;
+        if(document.activeElement) document.activeElement.blur(); // Anti-macet
+        
+        if (SCRIPT_URL !== "" && !SCRIPT_URL.includes("SCRIPT_URL")) {
+            fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ action: "updatePaymentMethod", id: orderId, method: newMethod }) }).catch(err => console.log(err));
+        }
+        
+        setTimeout(() => {
+            renderOrders(); 
+            if (typeof calculateFinance === "function") calculateFinance();
+            triggerNotification(`Metode bayar nota ${orderId} diubah ke: ${newMethod}`);
+        }, 50);
+    }
+}
+
+
 function updateOrderStatus(orderId, newStatus) {
     const orderIndex = orders.findIndex(o => o.id === orderId);
     if (orderIndex !== -1) {
-        orders[orderIndex].status = newStatus; renderOrders();
+        orders[orderIndex].status = newStatus; 
+        if(document.activeElement) document.activeElement.blur(); // Anti-macet
+        
         if (SCRIPT_URL !== "" && !SCRIPT_URL.includes("SCRIPT_URL")) {
-            fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ action: "updateStatus", id: orderId, status: newStatus }) })
-            .catch(err => console.log("Gagal sinkron cloud:", err));
+            fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ action: "updateStatus", id: orderId, status: newStatus }) }).catch(err => console.log(err));
         }
-        triggerNotification(`Status pesanan nota ${orderId} diubah menjadi: ${newStatus}`);
+        
+        setTimeout(() => {
+            renderOrders();
+            triggerNotification(`Status pesanan nota ${orderId} diubah menjadi: ${newStatus}`);
+        }, 50);
     }
 }
 
@@ -963,17 +1046,37 @@ async function printBluetoothReceipt() {
     } catch (error) { console.error("Gagal cetak bluetooth:", error); alert('❌ Gagal print Bluetooth: ' + error.message); }
 }
 
+
 function updatePaymentStatus(orderId, newPaymentStatus) {
     const orderIndex = orders.findIndex(o => o.id === orderId);
     if (orderIndex !== -1) {
         orders[orderIndex].paymentStatus = newPaymentStatus;
-        renderOrders(); calculateFinance();
+        
+        // ANTI-MACET: Lepaskan fokus klik dari dropdown secara paksa
+        if(document.activeElement) document.activeElement.blur();
+        
         if (SCRIPT_URL !== "" && !SCRIPT_URL.includes("SCRIPT_URL")) {
             fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ action: "updatePaymentStatus", id: orderId, paymentStatus: newPaymentStatus }) }).catch(err => console.log("Gagal sinkron cloud:", err));
         }
-        triggerNotification(`Status pembayaran nota ${orderId} diubah menjadi: ${newPaymentStatus}`);
+
+        // ==============================================================
+        // KODE BARU: AUTO-RESET LIST NOTA JIKA SUDAH LUNAS
+        // ==============================================================
+        if (newPaymentStatus === 'Lunas') {
+            const searchInput = document.querySelector('#view-orders input[type="text"]');
+            if (searchInput) searchInput.value = ''; // Kosongkan kotak pencarian
+        }
+        
+        // Tunda refresh UI sejenak agar browser bisa bernapas
+        setTimeout(() => {
+            renderOrders(); 
+            if (typeof calculateFinance === "function") calculateFinance();
+            restoreSearchFilter();
+            triggerNotification(`Status pembayaran nota ${orderId} diubah menjadi: ${newPaymentStatus}`);
+        }, 100);
     }
 }
+
 
 // ===============================================================
 // LOGIKA DATABASE MULTI-CABANG (OTOMATIS DARI MASTER DB)
@@ -1135,6 +1238,9 @@ function toggleFinanceFilterInputs() {
     if (typeof calculateFinance === "function") calculateFinance();
 }
 
+// ==========================================
+// FUNGSI KALKULASI KEUANGAN (UPGRADED ALUR PIUTANG)
+// ==========================================
 function calculateFinance() {
     const mode = document.getElementById('finance-filter-mode') ? document.getElementById('finance-filter-mode').value : 'today';
     
@@ -1144,7 +1250,6 @@ function calculateFinance() {
     const now = new Date();
     const jktTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Jakarta"}));
     
-    // PERBAIKAN BUG TANGGAL: Mencegah data hilang karena perbedaan jam server
     const y = jktTime.getFullYear();
     const m = String(jktTime.getMonth() + 1).padStart(2, '0');
     const d = String(jktTime.getDate()).padStart(2, '0');
@@ -1162,92 +1267,63 @@ function calculateFinance() {
         } catch (e) { return null; }
     };
 
-    // ==========================================
-    // 1. LAKUKAN FILTERING DATA TERLEBIH DAHULU
-    // ==========================================
+    const parseNominal = (val) => {
+        if (!val) return 0;
+        if (typeof val === 'number') return val;
+        return Number(val.toString().replace(/[^0-9.-]+/g, "")) || 0;
+    };
+
+    // 1. FILTER TANGGAL
     if (mode === 'today') {
-        filteredOrders = orders.filter(o => {
-            const parsed = parseDateString(o.date);
-            return parsed && parsed.dateStr === todayStr;
-        });
-        filteredExpenses = expenses.filter(e => {
-            const parsed = parseDateString(e.tanggal);
-            return parsed && parsed.dateStr === todayStr;
-        });
+        filteredOrders = orders.filter(o => { const p = parseDateString(o.date); return p && p.dateStr === todayStr; });
+        filteredExpenses = expenses.filter(e => { const p = parseDateString(e.tanggal || e.date); return p && p.dateStr === todayStr; });
     } else if (mode === 'date') {
         const pickerDate = document.getElementById('finance-input-date').value;
         if (pickerDate) {
-            filteredOrders = orders.filter(o => {
-                const parsed = parseDateString(o.date);
-                return parsed && parsed.dateStr === pickerDate;
-            });
-            filteredExpenses = expenses.filter(e => {
-                const parsed = parseDateString(e.tanggal);
-                return parsed && parsed.dateStr === pickerDate;
-            });
+            filteredOrders = orders.filter(o => { const p = parseDateString(o.date); return p && p.dateStr === pickerDate; });
+            filteredExpenses = expenses.filter(e => { const p = parseDateString(e.tanggal || e.date); return p && p.dateStr === pickerDate; });
         }
     } else if (mode === 'month') {
         const pickerMonth = document.getElementById('finance-input-month').value;
         if (pickerMonth) {
-            filteredOrders = orders.filter(o => {
-                const parsed = parseDateString(o.date);
-                return parsed && parsed.monthStr === pickerMonth;
-            });
-            filteredExpenses = expenses.filter(e => {
-                const parsed = parseDateString(e.tanggal);
-                return parsed && parsed.monthStr === pickerMonth;
-            });
+            filteredOrders = orders.filter(o => { const p = parseDateString(o.date); return p && p.monthStr === pickerMonth; });
+            filteredExpenses = expenses.filter(e => { const p = parseDateString(e.tanggal || e.date); return p && p.monthStr === pickerMonth; });
         }
     } else if (mode === 'range') { 
         const startDate = document.getElementById('finance-input-start').value;
         const endDate = document.getElementById('finance-input-end').value;
-        
         if (startDate && endDate) {
             const startObj = new Date(startDate); startObj.setHours(0, 0, 0, 0); 
             const endObj = new Date(endDate); endObj.setHours(23, 59, 59, 999); 
-
-            filteredOrders = orders.filter(o => {
-                if (!o.date) return false;
-                const dObj = new Date(o.date);
-                return dObj >= startObj && dObj <= endObj;
-            });
-            filteredExpenses = expenses.filter(e => {
-                if (!e.tanggal) return false;
-                const dObj = new Date(e.tanggal);
-                return dObj >= startObj && dObj <= endObj;
-            });
+            filteredOrders = orders.filter(o => { if (!o.date) return false; const dObj = new Date(o.date); return dObj >= startObj && dObj <= endObj; });
+            filteredExpenses = expenses.filter(e => { const tgl = e.tanggal || e.date; if (!tgl) return false; const dObj = new Date(tgl); return dObj >= startObj && dObj <= endObj; });
         }
     }
 
-    // ==========================================
-    // 2. HITUNG METODE PEMBAYARAN DARI DATA FILTER
-    // ==========================================
-    const tTunai = filteredOrders
-        .filter(o => o.method === 'Tunai / Cash')
-        .reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    // 2. PISAHKAN NOTA LUNAS DAN PIUTANG
+    const lunasOrders = filteredOrders.filter(o => o.paymentStatus !== 'Belum Bayar');
+    const piutangOrders = filteredOrders.filter(o => o.paymentStatus === 'Belum Bayar');
 
-    const tQris = filteredOrders
-        .filter(o => o.method === 'QRIS')
-        .reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    // 3. HITUNG METODE PEMBAYARAN (HANYA DARI YANG SUDAH LUNAS)
+    const tTunai = lunasOrders.filter(o => o.method === 'Tunai / Cash').reduce((sum, o) => sum + parseNominal(o.total), 0);
+    const tQris = lunasOrders.filter(o => o.method === 'QRIS').reduce((sum, o) => sum + parseNominal(o.total), 0);
+    const tTransfer = lunasOrders.filter(o => o.method === 'Transfer Bank').reduce((sum, o) => sum + parseNominal(o.total), 0);
 
-    const tTransfer = filteredOrders
-        .filter(o => o.method === 'Transfer Bank')
-        .reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-
-    // Update Angka UI Metode Pembayaran
     if(document.getElementById('rep-tunai')) document.getElementById('rep-tunai').innerText = `Rp ${tTunai.toLocaleString('id-ID')}`;
     if(document.getElementById('rep-qris')) document.getElementById('rep-qris').innerText = `Rp ${tQris.toLocaleString('id-ID')}`;
     if(document.getElementById('rep-transfer')) document.getElementById('rep-transfer').innerText = `Rp ${tTransfer.toLocaleString('id-ID')}`;
 
-    // ==========================================
-    // 3. HITUNG TOTAL KEUANGAN KESELURUHAN
-    // ==========================================
-    const tIncome = filteredOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-    const tExpense = filteredExpenses.reduce((sum, e) => sum + (Number(e.nominal) || 0), 0);
-    const netProfit = tIncome - tExpense;
+    // 4. HITUNG TOTAL KESELURUHAN
+    const tIncome = filteredOrders.reduce((sum, o) => sum + parseNominal(o.total), 0); // Omset Kotor
+    const tLunas = lunasOrders.reduce((sum, o) => sum + parseNominal(o.total), 0); // Uang Lunas
+    const tBelumLunas = piutangOrders.reduce((sum, o) => sum + parseNominal(o.total), 0); // Uang Nyangkut
+    const tExpense = filteredExpenses.reduce((sum, e) => sum + parseNominal(e.nominal || e.amount), 0);
     
-    // Update Angka UI Total Keuangan
+    const netProfit = tLunas - tExpense; // Laba Bersih = Uang Lunas - Pengeluaran
+    
     if(document.getElementById('rep-total-income')) document.getElementById('rep-total-income').innerText = `Rp ${tIncome.toLocaleString('id-ID')}`;
+    if(document.getElementById('rep-lunas')) document.getElementById('rep-lunas').innerText = `Rp ${tLunas.toLocaleString('id-ID')}`;
+    if(document.getElementById('rep-belum-lunas')) document.getElementById('rep-belum-lunas').innerText = `Rp ${tBelumLunas.toLocaleString('id-ID')}`;
     if(document.getElementById('rep-orders-count')) document.getElementById('rep-orders-count').innerText = `${filteredOrders.length} Transaksi`;
     if(document.getElementById('rep-total-expense')) document.getElementById('rep-total-expense').innerText = `Rp ${tExpense.toLocaleString('id-ID')}`;
     if(document.getElementById('rep-expense-count')) document.getElementById('rep-expense-count').innerText = `${filteredExpenses.length} Catatan`;
@@ -1258,47 +1334,76 @@ function calculateFinance() {
         profitEl.className = netProfit < 0 ? "text-2xl font-extrabold tracking-tight text-rose-200" : "text-2xl font-extrabold tracking-tight text-white";
     }
 
-    // Panggil fungsi untuk me-render daftar log masuk/keluar
     if (typeof renderFinanceLogs === "function") { renderFinanceLogs(filteredOrders, filteredExpenses); }
 }
 
 function renderFinanceLogs(oData, eData) {
     const listInc = document.getElementById('log-container-income');
     const listExp = document.getElementById('log-container-expense');
+    const listPiu = document.getElementById('log-container-piutang');
 
-    // URUTKAN DATA: Paling baru ke paling atas
-    const sortedIncome = [...oData].sort((a, b) => new Date(b.date) - new Date(a.date));
-    const sortedExpense = [...eData].sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+    const sortedOrders = [...oData].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const sortedExpense = [...eData].sort((a, b) => new Date(b.tanggal || b.date) - new Date(a.tanggal || a.date));
 
-    // === RENDER LOG PEMASUKAN ===
+    // BATASI RENDER DOM HANYA 50 TERBARU
+    const lunasOrders = sortedOrders.filter(o => o.paymentStatus !== 'Belum Bayar').slice(0, 50);
+    const piutangOrders = sortedOrders.filter(o => o.paymentStatus === 'Belum Bayar').slice(0, 50);
+    const displayExpense = sortedExpense.slice(0, 50);
+
+    // TAMPILAN TAB MASUK (LUNAS)
     if (listInc) {
-        listInc.innerHTML = sortedIncome.length === 0 ? `<p class="text-center text-xs text-slate-400 py-3">Tidak ada catatan pemasukan.</p>` : sortedIncome.map(o => `
+        listInc.innerHTML = lunasOrders.length === 0 ? `<p class="text-center text-xs text-slate-400 py-3">Tidak ada catatan pemasukan.</p>` : lunasOrders.map(o => `
             <div class="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl mb-2 border border-slate-100">
                 <div>
                     <p class="font-bold text-slate-700 text-xs">${o.customer}</p>
                     <p class="text-[10px] text-slate-400">${o.service}</p>
                     <p class="text-[10px] text-slate-400 mt-0.5"><i class="fa-regular fa-calendar-days text-[9px] mr-0.5"></i> ${formatTanggalIndo(o.date)}</p>
+                    <span class="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded text-[9px] font-bold">
+                        <i class="fa-solid fa-check-circle text-[8px]"></i> Lunas (${o.method})
+                    </span>
                 </div>
                 <div class="text-right">
-                    <p class="font-bold text-emerald-600 text-xs">+Rp ${Number(o.total).toLocaleString('id-ID')}</p>
+                    <p class="font-bold text-emerald-600 text-xs">+Rp ${Number(o.total || 0).toLocaleString('id-ID')}</p>
                 </div>
             </div>`).join('');
     }
 
-    // === RENDER LOG PENGELUARAN (DENGAN SUMBER DANA) ===
+    // TAMPILAN TAB PIUTANG (KUNING/AMBER)
+    if (listPiu) {
+        listPiu.innerHTML = piutangOrders.length === 0 ? `<p class="text-center text-xs text-slate-400 py-3">Bersih! Tidak ada kasbon/piutang.</p>` : piutangOrders.map(o => `
+            <div class="flex justify-between items-center p-2.5 bg-amber-50/50 rounded-xl mb-2 border border-amber-100">
+                <div>
+                    <p class="font-bold text-slate-800 text-xs">${o.customer}</p>
+                    <p class="text-[10px] text-slate-500">${o.service}</p>
+                    <p class="text-[10px] text-slate-500 mt-0.5"><i class="fa-regular fa-calendar-days text-[9px] mr-0.5"></i> ${formatTanggalIndo(o.date)}</p>
+                    <span class="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 bg-rose-50 text-rose-500 border border-rose-100 rounded text-[9px] font-bold">
+                        <i class="fa-solid fa-clock-rotate-left text-[8px]"></i> Belum Bayar
+                    </span>
+                </div>
+                <div class="text-right">
+                    <p class="font-bold text-amber-600 text-xs">Rp ${Number(o.total || 0).toLocaleString('id-ID')}</p>
+                    
+                    <button onclick="handleLunasiLoading('${o.id}')" class="text-[9px] font-bold text-amber-700 bg-amber-100 px-2 py-1 rounded-lg mt-1 hover:bg-amber-200 transition-all">
+                        Lunasi <i class="fa-solid fa-arrow-right ml-0.5"></i>
+                    </button>
+
+                </div>
+            </div>`).join('');
+    }
+
+    // TAMPILAN TAB KELUAR (PENGELUARAN)
     if (listExp) {
         listExp.innerHTML = sortedExpense.length === 0 ? `<p class="text-center text-xs text-slate-400 py-3">Tidak ada catatan pengeluaran.</p>` : sortedExpense.map(e => `
             <div class="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl mb-2 border border-slate-100">
                 <div>
-                    <p class="font-bold text-slate-700 text-xs">${e.keterangan}</p>
-                    <p class="text-[10px] text-slate-400 mt-0.5 mb-1"><i class="fa-regular fa-calendar-days text-[9px] mr-0.5"></i> ${formatTanggalIndo(e.tanggal)}</p>
-                    
+                    <p class="font-bold text-slate-700 text-xs">${e.keterangan || '-'}</p>
+                    <p class="text-[10px] text-slate-400 mt-0.5 mb-1"><i class="fa-regular fa-calendar-days text-[9px] mr-0.5"></i> ${formatTanggalIndo(e.tanggal || e.date)}</p>
                     <span class="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 bg-rose-50 text-rose-500 border border-rose-100 rounded text-[9px] font-bold">
                         <i class="fa-solid fa-wallet text-[8px]"></i> ${e.sumber_dana || 'Kas Laci (Tunai)'}
                     </span>
                 </div>
                 <div class="flex items-center gap-2">
-                    <p class="font-bold text-rose-500 text-xs">-Rp ${Number(e.nominal).toLocaleString('id-ID')}</p>
+                    <p class="font-bold text-rose-500 text-xs">-Rp ${Number(e.nominal || 0).toLocaleString('id-ID')}</p>
                     <button onclick="deleteExpense('${e.id}')" class="text-rose-400 hover:text-rose-600 bg-white border border-rose-100 shadow-sm px-2 py-1 rounded-lg"><i class="fa-solid fa-trash text-[10px]"></i></button>
                 </div>
             </div>`).join('');
@@ -1308,21 +1413,37 @@ function renderFinanceLogs(oData, eData) {
 function switchLogTab(tabId) {
     const listIncome = document.getElementById('log-container-income');
     const listExpense = document.getElementById('log-container-expense');
+    const listPiutang = document.getElementById('log-container-piutang');
+    
     const btnIncome = document.getElementById('tab-btn-income');
     const btnExpense = document.getElementById('tab-btn-expense');
+    const btnPiutang = document.getElementById('tab-btn-piutang');
 
+    // Reset semua tampilan
+    if(listIncome) listIncome.classList.add('hidden');
+    if(listExpense) listExpense.classList.add('hidden');
+    if(listPiutang) listPiutang.classList.add('hidden');
+
+    const inactiveClass = "flex-1 py-2 text-xs font-bold rounded-lg transition-all text-slate-400 hover:text-slate-600 bg-transparent";
+    const activeClass = "flex-1 py-2 text-xs font-bold rounded-lg transition-all bg-white shadow-sm text-slate-800";
+
+    if(btnIncome) btnIncome.className = inactiveClass;
+    if(btnExpense) btnExpense.className = inactiveClass;
+    if(btnPiutang) btnPiutang.className = inactiveClass;
+
+    // Aktifkan yang dipilih
     if (tabId === 'income') {
         if(listIncome) listIncome.classList.remove('hidden');
-        if(listExpense) listExpense.classList.add('hidden');
-        if(btnIncome) btnIncome.className = "flex-1 py-2 text-xs font-bold rounded-lg transition-all bg-white shadow-sm text-slate-800";
-        if(btnExpense) btnExpense.className = "flex-1 py-2 text-xs font-bold rounded-lg transition-all text-slate-400 hover:text-slate-600 bg-transparent";
-    } else {
-        if(listIncome) listIncome.classList.add('hidden');
+        if(btnIncome) btnIncome.className = activeClass;
+    } else if (tabId === 'expense') {
         if(listExpense) listExpense.classList.remove('hidden');
-        if(btnExpense) btnExpense.className = "flex-1 py-2 text-xs font-bold rounded-lg transition-all bg-white shadow-sm text-slate-800";
-        if(btnIncome) btnIncome.className = "flex-1 py-2 text-xs font-bold rounded-lg transition-all text-slate-400 hover:text-slate-600 bg-transparent";
+        if(btnExpense) btnExpense.className = activeClass;
+    } else if (tabId === 'piutang') {
+        if(listPiutang) listPiutang.classList.remove('hidden');
+        if(btnPiutang) btnPiutang.className = activeClass;
     }
 }
+
 
 function toggleExpenseForm() {
     const form = document.getElementById('inline-expense-form');
@@ -1456,4 +1577,135 @@ function saveCashierSettings() {
         alert("PIN Cabang Salah! Hubungi Owner jika Anda lupa PIN.");
         document.getElementById('setting-input-pin').value = ''; // Kosongkan input
     }
+}
+
+
+function handleLunasiLoading(id) {
+    // 1. Munculkan layar loading
+    document.getElementById('simple-loading').classList.remove('hidden');
+    
+    // 2. Tunggu 0.6 detik (agar loadingnya terlihat), lalu pindah ke halaman Nota
+    setTimeout(() => {
+        switchView('orders');
+        searchByQR(id);
+        
+        // 3. Sembunyikan layar loading setelah selesai
+        document.getElementById('simple-loading').classList.add('hidden');
+    }, 600); 
+}
+
+
+// ====================================================================
+// FITUR SCANNER QR CODE NOTA & SUARA BIP
+// ====================================================================
+let html5QrcodeScanner = null;
+
+// Fungsi Pintar: Membuat Suara Bip Tanpa File Audio Eksternal!
+function playBeep() {
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        // 1. Ubah jenis gelombang menjadi "square" agar suaranya tajam/elektronik
+        osc.type = "square"; 
+        
+        // 2. Naikkan frekuensi ke 2000Hz agar sangat melengking (sebelumnya 900)
+        osc.frequency.setValueAtTime(2000, ctx.currentTime); 
+        
+        // 3. Volume dikecilkan sedikit agar tidak pecah di speaker (0.05)
+        gain.gain.setValueAtTime(0.05, ctx.currentTime); 
+        
+        osc.start(ctx.currentTime);
+        
+        // 4. Durasi dipersingkat menjadi 0.1 detik agar terdengar lebih "cekatan"
+        osc.stop(ctx.currentTime + 0.1); 
+    } catch(e) { console.log("Audio not supported"); }
+}
+
+function openQRScanner() {
+    // Munculkan layar pop-up kamera
+    document.getElementById('qrScannerModal').classList.remove('hidden');
+    
+    if (!html5QrcodeScanner) {
+        html5QrcodeScanner = new Html5Qrcode("qr-reader");
+    }
+    
+    // Nyalakan kamera belakang
+    html5QrcodeScanner.start(
+        { facingMode: "environment" }, 
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => {
+            // JIKA BERHASIL TERSCAN:
+            playBeep(); // 1. Bunyikan Bip!
+            
+            // 2. Ekstrak otomatis URL (https://foresa.my.id?order=FRS-2361) menjadi "FRS-2361"
+            let orderId = decodedText;
+            if (decodedText.includes('order=')) {
+                orderId = decodedText.split('order=')[1].split('&')[0];
+            }
+
+            // 3. Matikan kamera
+            closeQRScanner();
+
+            // 4. Masukkan ke input text dan cari otomatis!
+            const searchInput = document.querySelector('#view-orders input[type="text"]');
+            if(searchInput) {
+                searchInput.value = orderId;
+            }
+            searchByQR(orderId);
+            
+            if(typeof triggerNotification === "function") {
+                triggerNotification(`✅ Nota Ditemukan: ${orderId}`);
+            }
+        },
+        (errorMessage) => {
+            // Abaikan peringatan saat kamera sedang mencari fokus
+        }
+    ).catch(err => {
+        alert("Gagal membuka kamera. Pastikan browser diizinkan mengakses kamera perangkat Anda.");
+        closeQRScanner();
+    });
+}
+
+function closeQRScanner() {
+    document.getElementById('qrScannerModal').classList.add('hidden');
+    if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop().catch(err => console.log("Gagal mematikan kamera", err));
+    }
+}
+
+
+// ====================================================================
+// FITUR REFRESH / RESET LIST NOTA
+// ====================================================================
+function refreshOrderList() {
+    // 1. Kosongkan teks di kotak input pencarian
+    const searchInput = document.querySelector('#view-orders input[type="text"]');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+
+    // 2. Tampilkan efek loading (Skeleton) agar terlihat seperti memuat ulang data
+    const ordersList = document.getElementById('orders-list');
+    if (ordersList) {
+        ordersList.innerHTML = `
+            <div class="bg-slate-200 rounded-2xl h-36 w-full animate-pulse"></div>
+            <div class="bg-slate-200 rounded-2xl h-36 w-full animate-pulse"></div>
+            <div class="bg-slate-200 rounded-2xl h-36 w-full animate-pulse hidden sm:block"></div>`;
+    }
+
+    // 3. Tunda 0.4 detik (agar animasi loading terlihat), lalu panggil fungsi render ulang
+    setTimeout(() => {
+        renderOrders();
+        
+        // Panggil notifikasi hijau di atas layar
+        if(typeof triggerNotification === "function") {
+            triggerNotification('Tampilan daftar nota telah dikembalikan ke semula.');
+        }
+    }, 400);
 }
