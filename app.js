@@ -30,7 +30,28 @@ let isMasterLoaded = false;
 // SESSION CONTROL LOGIC
 window.addEventListener('DOMContentLoaded', () => {
     updateTenantUI();
-    syncMasterData(); // Tarik data dari Master DB diam-diam di latar belakang
+    syncMasterData();
+    loadReceiptSettings();
+    
+// Tambahkan fitur agar layar tidak mati otomatis saat kasir buka aplikasi
+if ('wakeLock' in navigator) {
+    let wakeLock = null;
+    const requestWakeLock = async () => {
+        try {
+            wakeLock = await navigator.wakeLock.request('screen');
+        } catch (err) {
+            console.log(`${err.name}, ${err.message}`);
+        }
+    };
+    requestWakeLock();
+    // Memastikan layar tetap terjaga jika halaman di-refresh
+    document.addEventListener('visibilitychange', () => {
+        if (wakeLock !== null && document.visibilityState === 'visible') {
+            requestWakeLock();
+        }
+    });
+}
+
 
     const urlParams = new URLSearchParams(window.location.search);
     const orderParam = urlParams.get('order');
@@ -587,6 +608,37 @@ function openReceiptModal(order) {
     document.getElementById('nota-cashier').innerText = order.cashier;
     document.getElementById('nota-customer').innerText = order.customer;
     
+    // --- UPDATE PREVIEW DENGAN PENGATURAN TERBARU ---
+    const useLogo = localStorage.getItem('receipt_use_logo') !== 'false'; 
+    const useName = localStorage.getItem('receipt_use_name') === 'true';
+    const savedPhone = localStorage.getItem('receipt_phone') || tenantPhone || "628123456789";
+    const savedAddress = localStorage.getItem('receipt_address') || "";
+
+    const logoEl = document.getElementById('preview-logo-container');
+    const nameEl = document.getElementById('preview-name-container');
+    const phoneEl = document.getElementById('nota-tenant-phone');
+    const addressEl = document.getElementById('nota-tenant-address');
+
+    if (logoEl) logoEl.style.display = useLogo ? 'flex' : 'none';
+    
+    if (nameEl) {
+        nameEl.style.display = useName ? 'block' : 'none';
+        nameEl.innerText = `====== ${tenantName.toUpperCase()} ======`;
+    }
+    
+    if (phoneEl) phoneEl.innerText = `Hub.+${savedPhone}`;
+    
+    if (addressEl) {
+        if (savedAddress !== "") {
+            addressEl.innerText = savedAddress;
+            addressEl.classList.remove('hidden');
+        } else {
+            addressEl.classList.add('hidden');
+        }
+    }
+    // ------------------------------------------------
+   
+    
     const notaItemsContainer = document.getElementById('nota-items-list');
     if (notaItemsContainer) {
         if (order.itemsDetail && order.itemsDetail.length > 0) {
@@ -600,13 +652,11 @@ function openReceiptModal(order) {
                     unit = (item.qty % 1 !== 0) ? 'Kg' : 'Pcs';
                 }
                 
+                                // DESAIN BARU (Persis cetakan kertas)
                 return `
-                <div class="flex justify-between items-start py-0.5 border-b border-slate-50">
-                    <div class="max-w-[180px]">
-                        <p class="font-semibold">${item.name}</p>
-                        <p class="text-[10px] text-slate-400">${item.qty} ${unit} @ Rp ${item.price.toLocaleString('id-ID')}</p>
-                    </div>
-                    <span class="font-bold text-slate-700">Rp ${(item.price * item.qty).toLocaleString('id-ID')}</span>
+                <div class="flex flex-col py-0.5">
+                    <div class="text-left">${item.name}</div>
+                    <div class="text-right">${item.qty} ${unit} @ Rp ${item.price.toLocaleString('id-ID')} -> Rp ${(item.price * item.qty).toLocaleString('id-ID')}</div>
                 </div>
                 `;
             }).join('');
@@ -942,14 +992,184 @@ window.addEventListener('load', () => {
     }
 });
 
+// ====================================================================
+// FUNGSI KONVERSI LOGO KE BINER PRINTER THERMAL (RASTER BIT-IMAGE)
+// ====================================================================
+async function getLogoPrintData() {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.src = "logo/print-foresa.jpg"; // Memanggil langsung dari folder web Anda
+        
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const targetWidth = 240; // Ukuran lebar aman untuk printer 58mm
+            const targetHeight = Math.round((targetWidth / img.width) * img.height);
+            
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, targetWidth, targetHeight);
+            ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+            const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+            const pixels = imageData.data;
+
+            const widthBytes = Math.ceil(targetWidth / 8);
+            const height = targetHeight;
+            const buffer = new Uint8Array(8 + widthBytes * height);
+            
+            buffer[0] = 0x1D; buffer[1] = 0x76; buffer[2] = 0x30; buffer[3] = 0x00; 
+            buffer[4] = widthBytes & 0xFF; buffer[5] = (widthBytes >> 8) & 0xFF; 
+            buffer[6] = height & 0xFF; buffer[7] = (height >> 8) & 0xFF;
+
+            let offset = 8;
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < widthBytes; x++) {
+                    let byte = 0;
+                    for (let b = 0; b < 8; b++) {
+                        const px = (x * 8) + b;
+                        if (px < targetWidth) {
+                            const idx = (y * targetWidth + px) * 4;
+                            const r = pixels[idx], g = pixels[idx+1], b_color = pixels[idx+2], a = pixels[idx+3];
+                            const luminance = (0.299 * r + 0.587 * g + 0.114 * b_color);
+                            // Cek jika piksel berwarna gelap
+                            if (luminance < 128 && a > 128) byte |= (1 << (7 - b));
+                        }
+                    }
+                    buffer[offset++] = byte;
+                }
+            }
+            resolve(buffer);
+        };
+        img.onerror = () => {
+            console.error("Gagal meload logo dari folder web.");
+            resolve(null);
+        };
+    });
+}
+
+
+// ==========================================================
+// PENGATURAN STRUK (SIMPAN & MUAT KE MEMORI HP)
+// ==========================================================
+
+function saveReceiptSettings() {
+    // 1. Ambil semua data dari form
+    const phone = document.getElementById('set-phone').value;
+    const address = document.getElementById('set-address').value;
+    const useLogo = document.getElementById('set-use-logo').checked;
+    const useName = document.getElementById('set-use-name').checked;
+    
+    // 2. Simpan ke database browser (LocalStorage)
+    localStorage.setItem('receipt_phone', phone);
+    localStorage.setItem('receipt_address', address);
+    localStorage.setItem('receipt_use_logo', useLogo);
+    localStorage.setItem('receipt_use_name', useName);
+    
+    // 3. Tampilkan Notifikasi Sistem (Ganti alert bawaan dengan triggerNotification)
+    triggerNotification("✅ Pengaturan struk berhasil disimpan!");
+    
+    // Opsional: Jika ingin tetap ada alert pop-up, buka komentar baris di bawah ini
+    // alert("Pengaturan struk berhasil disimpan.");
+}
+
+
+function loadReceiptSettings() {
+    // Tarik data dari memori, jika kosong biarkan string kosong ("")
+    const phone = localStorage.getItem('receipt_phone') || "";
+    const address = localStorage.getItem('receipt_address') || "";
+    
+    // Untuk checkbox, default Logo = Nyala, Nama = Mati
+    const useLogo = localStorage.getItem('receipt_use_logo') !== 'false'; 
+    const useName = localStorage.getItem('receipt_use_name') === 'true';
+
+    // Tempelkan data ke dalam kotak input HTML
+    const phoneInput = document.getElementById('set-phone');
+    const addressInput = document.getElementById('set-address');
+    const logoCheck = document.getElementById('set-use-logo');
+    const nameCheck = document.getElementById('set-use-name');
+
+    if(phoneInput) phoneInput.value = phone;
+    if(addressInput) addressInput.value = address;
+    if(logoCheck) logoCheck.checked = useLogo;
+    if(nameCheck) nameCheck.checked = useName;
+}
+
+
+// ==========================================================
+// KONEKSI BLUETOOTH GLOBAL (SEAMLESS PRINTING & STATUS UI)
+// ==========================================================
 const PRINTER_SERVICE_UUID = '000018f0-0000-1000-8000-00805f9b34fb';
 const PRINTER_CHARACTERISTIC_UUID = '00002af1-0000-1000-8000-00805f9b34fb';
+const CMD_SPASI_MINI = new Uint8Array([0x1B, 0x4A, 16]); 
+
+let globalPrinterDevice = null;
+let globalPrinterServer = null;
+
+function updatePrinterStatusUI(isConnected) {
+    const btn = document.getElementById('printer-status-btn');
+    if (!btn) return;
+    if (isConnected) {
+        btn.className = "text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl hover:bg-emerald-100 transition-all flex items-center gap-1.5";
+        btn.innerHTML = `<i class="fa-solid fa-print"></i> <span class="hidden sm:inline">Printer: ON</span>`;
+    } else {
+        btn.className = "text-xs font-bold text-slate-500 bg-slate-100 border border-slate-200 px-3 py-2 rounded-xl hover:bg-slate-200 transition-all flex items-center gap-1.5";
+        btn.innerHTML = `<i class="fa-solid fa-print"></i> <span class="hidden sm:inline">Printer: OFF</span>`;
+    }
+}
+
+async function connectPrinter() {
+    if (globalPrinterDevice && globalPrinterDevice.gatt.connected) {
+        if(confirm("Printer Bluetooth sudah terhubung. Apakah Anda ingin memutuskan koneksi printer?")) {
+            globalPrinterDevice.gatt.disconnect();
+            updatePrinterStatusUI(false);
+        }
+        return;
+    }
+
+    try {
+        triggerNotification("Mencari printer Bluetooth di sekitar...");
+        globalPrinterDevice = await navigator.bluetooth.requestDevice({
+            filters: [ { namePrefix: 'MTP' }, { namePrefix: 'RPP' }, { namePrefix: 'POS' }, { namePrefix: 'EPPOS' }, { services: [PRINTER_SERVICE_UUID] } ],
+            optionalServices: [PRINTER_SERVICE_UUID]
+        });
+
+        globalPrinterServer = await globalPrinterDevice.gatt.connect();
+
+        globalPrinterDevice.addEventListener('gattserverdisconnected', () => {
+            console.log("Koneksi Printer Bluetooth Terputus.");
+            globalPrinterDevice = null;
+            globalPrinterServer = null;
+            updatePrinterStatusUI(false);
+            triggerNotification("⚠️ Koneksi printer terputus!");
+        });
+
+        updatePrinterStatusUI(true);
+        triggerNotification("✅ Printer berhasil terhubung & siap mencetak!");
+    } catch (error) {
+        updatePrinterStatusUI(false);
+        if (error.name !== 'NotFoundError') { 
+            console.error("Gagal konek printer:", error);
+            alert("Gagal menghubungkan printer: " + error.message);
+        }
+    }
+}
 
 async function printBluetoothReceipt() {
     try {
         const notaId = document.getElementById('nota-id').innerText;
         const currentOrderData = orders.find(o => o.id === notaId);
         if (!currentOrderData) { return alert('❌ Data transaksi tidak ditemukan di memori sistem!'); }
+
+        if (!globalPrinterDevice || !globalPrinterDevice.gatt.connected) {
+            await connectPrinter();
+        }
+        
+        if (!globalPrinterDevice || !globalPrinterDevice.gatt.connected) {
+            return; 
+        }
 
         const notaCashier = currentOrderData.cashier || "Kasir";
         const notaCustomer = currentOrderData.customer || "-";
@@ -960,13 +1180,7 @@ async function printBluetoothReceipt() {
         let changeVal = currentOrderData.cashChange !== undefined && currentOrderData.cashChange !== null ? currentOrderData.cashChange : 0;
         const trackingUrl = `https://foresa.my.id?order=${notaId}`;
 
-        const device = await navigator.bluetooth.requestDevice({
-            filters: [ { namePrefix: 'MTP' }, { namePrefix: 'RPP' }, { namePrefix: 'POS' }, { namePrefix: 'EPPOS' }, { services: [PRINTER_SERVICE_UUID] } ],
-            optionalServices: [PRINTER_SERVICE_UUID]
-        });
-
-        const server = await device.gatt.connect();
-        const service = await server.getPrimaryService(PRINTER_SERVICE_UUID);
+        const service = await globalPrinterServer.getPrimaryService(PRINTER_SERVICE_UUID);
         const characteristic = await service.getCharacteristic(PRINTER_CHARACTERISTIC_UUID);
 
         const encoder = new TextEncoder();
@@ -978,14 +1192,17 @@ async function printBluetoothReceipt() {
         const CMD_RIGHT = new Uint8Array([ESC, 0x61, 2]);
         const CMD_BOLD_ON = new Uint8Array([ESC, 0x45, 1]);
         const CMD_BOLD_OFF = new Uint8Array([ESC, 0x45, 0]);
-        const CMD_FEED = new Uint8Array([ESC, 0x64, 4]);
-
+   
+        const CMD_FEED = new Uint8Array([ESC, 0x64, 2]);
+        const CMD_SMALL_ON = new Uint8Array([ESC, 0x4D, 1]);  // Font B (Kecil)
+        const CMD_SMALL_OFF = new Uint8Array([ESC, 0x4D, 0]); // Font A (Normal)
+        const CMD_ITALIC_ON = new Uint8Array([ESC, 0x34]);    // Italic Nyala
+        const CMD_ITALIC_OFF = new Uint8Array([ESC, 0x35]);   // Italic Mati
         const text = (str) => encoder.encode(str + "\n");
 
         const qrData = encoder.encode(trackingUrl);
         const qrLength = qrData.length + 3;
-        const pL = qrLength & 0xFF;
-        const pH = (qrLength >> 8) & 0xFF;
+        const pL = qrLength & 0xFF; const pH = (qrLength >> 8) & 0xFF;
 
         const CMD_QR_MODEL = new Uint8Array([GS, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00]);
         const CMD_QR_SIZE = new Uint8Array([GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x06]);
@@ -995,10 +1212,47 @@ async function printBluetoothReceipt() {
 
         let printPayload = [];
         printPayload.push(CMD_INIT);
-        printPayload.push(CMD_CENTER, CMD_BOLD_ON, text(`====== ${tenantName.toUpperCase()} ======"`), CMD_BOLD_OFF);
-        printPayload.push(text(`Hub.+${tenantPhone}`));
+        printPayload.push(CMD_CENTER);
+
+        // --- BACA PENGATURAN STRUK DARI MEMORI HP ---
+        const useLogo = localStorage.getItem('receipt_use_logo') !== 'false'; // Default nyala
+        const useName = localStorage.getItem('receipt_use_name') === 'true';  // Default mati
+        const phone = localStorage.getItem('receipt_phone') || tenantPhone || "628123456789";
+        const address = localStorage.getItem('receipt_address') || "";
+
+        // 1. Cetak Logo (Jika Dicentang)
+        if (useLogo) {
+            if (typeof getLogoPrintData === "function") {
+                const logoBuffer = await getLogoPrintData();
+                if (logoBuffer) {
+                    const CHUNK_SIZE = 256;
+                    for (let i = 0; i < logoBuffer.length; i += CHUNK_SIZE) {
+                        printPayload.push(logoBuffer.slice(i, i + CHUNK_SIZE));
+                    }
+                    printPayload.push(CMD_SPASI_MINI); 
+                }
+            }
+        }
+
+        // 2. Cetak Nama Cabang Tebal (Jika Dicentang)
+        if (useName) {
+            printPayload.push(CMD_BOLD_ON, text(`====== ${tenantName.toUpperCase()} ======`), CMD_BOLD_OFF);
+        }
+
+                // 3. Cetak Kontak dan Alamat (Kecil & Miring)
+        printPayload.push(CMD_SMALL_ON, CMD_ITALIC_ON); // Aktifkan Kecil & Miring
+        
+        printPayload.push(text(`Hub.+${phone}`));
+        if (address !== "") {
+            printPayload.push(text(address));
+        }
+        
+        printPayload.push(CMD_SMALL_OFF, CMD_ITALIC_OFF); // PENTING: Kembalikan ke Normal
+        
         printPayload.push(text("================================"));
         printPayload.push(CMD_LEFT);
+        
+        // --- SISA STRUK (ITEM, TOTAL, QR) ---
         printPayload.push(text(`Tgl Masuk : ${formatTanggalIndo(currentOrderData.date)}`));
         printPayload.push(text(`Estimasi  : ${currentOrderData.estimatedPickup ? formatTanggalIndo(currentOrderData.estimatedPickup) : "-"}`));
         printPayload.push(text(`Invoice   : ${notaId}`));
@@ -1008,13 +1262,9 @@ async function printBluetoothReceipt() {
 
         if (currentOrderData.itemsDetail && currentOrderData.itemsDetail.length > 0) {
             currentOrderData.itemsDetail.forEach(it => {
-                // Logika pintar penentuan Kg atau Pcs untuk Bluetooth Printer
                 let unit = 'x';
-                if (it.type) {
-                    unit = (it.type === 'Kiloan') ? 'Kg' : 'Pcs';
-                } else {
-                    unit = (it.qty % 1 !== 0) ? 'Kg' : 'Pcs';
-                }
+                if (it.type) { unit = (it.type === 'Kiloan') ? 'Kg' : 'Pcs'; } 
+                else { unit = (it.qty % 1 !== 0) ? 'Kg' : 'Pcs'; }
 
                 printPayload.push(CMD_LEFT, text(`${it.name}`));
                 printPayload.push(CMD_RIGHT, text(`${it.qty} ${unit} @ Rp ${it.price.toLocaleString('id-ID')} -> Rp ${(it.price * it.qty).toLocaleString('id-ID')}`));
@@ -1033,18 +1283,26 @@ async function printBluetoothReceipt() {
         printPayload.push(CMD_BOLD_OFF);
         printPayload.push(CMD_CENTER, text("================================"));
         printPayload.push(text("Scan untuk cek status pesanan:"));
-        printPayload.push(text("\n"));
+        
+        printPayload.push(CMD_SPASI_MINI);
         printPayload.push(CMD_QR_MODEL, CMD_QR_SIZE, CMD_QR_ERROR, CMD_QR_STORE, CMD_QR_PRINT);
-        printPayload.push(text("\n"));
+        printPayload.push(CMD_SPASI_MINI);
+        
         printPayload.push(text("Pakaian Bersih, Wangi & Rapi"));
         printPayload.push(text("Terima Kasih :)"));
+
         printPayload.push(CMD_FEED);
 
         for (const chunk of printPayload) { await characteristic.writeValue(chunk); }
-        alert('✅ Struk & QR Code berhasil dicetak via Bluetooth');
-        server.disconnect();
-    } catch (error) { console.error("Gagal cetak bluetooth:", error); alert('❌ Gagal print Bluetooth: ' + error.message); }
+        triggerNotification('✅ Struk berhasil dicetak');
+    } catch (error) { 
+        console.error("Gagal cetak bluetooth:", error); 
+        alert('❌ Gagal print Bluetooth. Pastikan printer menyala dan belum tersambung ke perangkat lain.'); 
+        globalPrinterDevice = null;
+        globalPrinterServer = null;
+    }
 }
+
 
 
 function updatePaymentStatus(orderId, newPaymentStatus) {
@@ -1708,4 +1966,26 @@ function refreshOrderList() {
             triggerNotification('Tampilan daftar nota telah dikembalikan ke semula.');
         }
     }, 400);
+}
+
+
+// Simpan ke LocalStorage setiap ada perubahan
+function saveReceiptSettings() {
+    localStorage.setItem('receipt_phone', document.getElementById('set-phone').value);
+    localStorage.setItem('receipt_address', document.getElementById('set-address').value);
+    localStorage.setItem('receipt_use_logo', document.getElementById('set-use-logo').checked);
+    localStorage.setItem('receipt_use_name', document.getElementById('set-use-name').checked);
+}
+
+// Muat saat aplikasi dibuka
+function loadReceiptSettings() {
+    const phone = localStorage.getItem('receipt_phone') || "628123456789";
+    const address = localStorage.getItem('receipt_address') || "Alamat Toko Anda";
+    const useLogo = localStorage.getItem('receipt_use_logo') === 'true';
+    const useName = localStorage.getItem('receipt_use_name') === 'true';
+
+    document.getElementById('set-phone').value = phone;
+    document.getElementById('set-address').value = address;
+    document.getElementById('set-use-logo').checked = useLogo;
+    document.getElementById('set-use-name').checked = useName;
 }
