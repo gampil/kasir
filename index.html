@@ -102,8 +102,10 @@
 
             <main class="max-w-7xl mx-auto p-4 sm:p-6 w-full flex-1 flex flex-col justify-start">
                 
-                <section id="view-pos" class="view-section grid grid-cols-1 xl:grid-cols-3 gap-6 items-start w-full">
-                    <div class="xl:col-span-2 space-y-6">
+                <section id="view-pos" class="view-section grid grid-cols-1 lg:grid-cols-3 gap-6 items-start w-full">
+              
+                   <div class="lg:col-span-2 space-y-6">
+
                         <div class="flex justify-between items-center">
                             <div class="flex gap-2 overflow-x-auto pb-1">
                                 <button class="px-4 py-2 rounded-xl text-xs font-semibold theme-bg text-white shadow-xs">Semua Produk</button>
@@ -115,7 +117,8 @@
                         <div class="grid grid-cols-2 sm:grid-cols-3 gap-4" id="services-grid"></div>
                     </div>
 
-                    <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4 h-auto block w-full clear-both xl:sticky xl:top-24">
+                    <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-xs flex flex-col h-[80vh] lg:sticky lg:top-24 w-full">
+
                         <h3 class="font-bold text-slate-800 text-base flex items-center justify-between">
                             <span>Konfirmasi Keranjang</span>
                             <i class="fa-solid fa-basket-shopping theme-color"></i>
@@ -177,21 +180,26 @@
                                 </div>
                             </div>
 
-                            <div class="space-y-2 mt-3 w-full">
+                                                                                    <div class="space-y-2 mt-3 w-full relative">
                                 <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Layanan Terpilih</label>
-                                <div id="cart-items" class="min-h-[40px] w-full flex flex-col gap-2.5 text-xs font-medium text-slate-500">
-                                    <span class="text-center italic text-slate-400 py-4 bg-slate-50 rounded-2xl border border-slate-100 border-dashed">Silahkan pilih produk di sebelah kiri...</span>
+                                <div class="max-h-[35vh] overflow-y-auto pr-2 overflow-x-hidden pb-4">
+                                    <div id="cart-items" class="min-h-[40px] w-full flex flex-col gap-2.5 text-xs font-medium text-slate-500">
+                                        <span class="text-center italic text-slate-400 py-4 bg-slate-50 rounded-2xl border border-slate-100 border-dashed">Silahkan pilih produk di sebelah kiri...</span>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div class="flex justify-between items-center font-bold mt-4 border-t border-slate-100 pt-3">
-                                <span>Total Akhir</span>
-                                <span id="total-amount" class="text-lg theme-color">Rp 0</span>
+
+                             <div class="sticky bottom-0 bg-white pt-4 pb-2 z-20 border-t border-slate-100 mt-2 shadow-[0_-15px_15px_-10px_rgba(255,255,255,1)]">
+                                <div class="flex justify-between items-center font-bold mb-3">
+                                    <span class="text-slate-600">Total Akhir</span>
+                                    <span id="total-amount" class="text-2xl font-extrabold theme-color">Rp 0</span>
+                                </div>
+                                <button onclick="processCheckout()" class="w-full theme-bg text-white font-bold py-4 rounded-xl shadow-lg shadow-cyan-100 hover:opacity-95 active:scale-95 transition-all flex justify-center items-center gap-2 text-sm uppercase tracking-wide">
+                                    <i class="fa-solid fa-print"></i> Proses Transaksi & Struk
+                                </button>
                             </div>
-                            <button onclick="processCheckout()" class="w-full theme-bg text-white font-bold py-4 rounded-xl shadow-md shadow-cyan-100 hover:opacity-95 transition-all flex justify-center items-center gap-2 text-sm">
-                                <i class="fa-solid fa-print"></i> Proses Transaksi & Struk
-                            </button>
-                        </div>
+
                     </div>
                 </section>
 
