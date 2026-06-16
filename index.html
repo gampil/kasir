@@ -305,136 +305,150 @@
                     </div>
                 </section>
 
-               <section id="view-finance" class="view-section hidden w-full max-w-md mx-auto space-y-4">
-    <!-- FILTER LAPORAN -->
-    <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-3 mb-2">
-        <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-            <span>📅</span> Filter Laporan
-        </h4>
-        <div class="grid grid-cols-1 gap-2 text-xs">
-            <div>
-                <select id="finance-filter-mode" onchange="toggleFinanceFilterInputs()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-semibold text-slate-700 outline-none focus:border-[#40E0D0]">
-                    <option value="today">Hari Ini</option>
-                    <option value="range">Rentang Tanggal</option>
-                    <option value="month">Rekap Bulanan</option>
-                    <option value="date">Tanggal Spesifik</option>
-                    <option value="all">Semua Waktu</option>
-                </select>
-            </div>
-            
-            <div id="wrapper-filter-date" class="hidden">
-                <input type="date" id="finance-input-date" onchange="calculateFinance()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-semibold text-slate-700 outline-none focus:border-[#40E0D0]">
-            </div>
-            
-            <div id="wrapper-filter-month" class="hidden">
-                <input type="month" id="finance-input-month" onchange="calculateFinance()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-semibold text-slate-700 outline-none focus:border-[#40E0D0]">
-            </div>
+                               <section id="view-finance" class="view-section hidden w-full grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                    
+                    <div class="md:col-span-2 space-y-4 md:space-y-5">
+                        
+                        <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-3">
+                            <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                                <span>📅</span> Filter Laporan Keuangan
+                            </h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs items-center">
+                                <div>
+                                    <select id="finance-filter-mode" onchange="toggleFinanceFilterInputs()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-semibold text-slate-700 outline-none focus:border-[#40E0D0]">
+                                        <option value="today">Hari Ini</option>
+                                        <option value="range">Rentang Tanggal</option>
+                                        <option value="month">Rekap Bulanan</option>
+                                        <option value="date">Tanggal Spesifik</option>
+                                        <option value="all">Semua Waktu</option>
+                                    </select>
+                                </div>
+                                
+                                <div id="wrapper-filter-date" class="hidden">
+                                    <input type="date" id="finance-input-date" onchange="calculateFinance()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-semibold text-slate-700 outline-none focus:border-[#40E0D0]">
+                                </div>
+                                
+                                <div id="wrapper-filter-month" class="hidden">
+                                    <input type="month" id="finance-input-month" onchange="calculateFinance()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-semibold text-slate-700 outline-none focus:border-[#40E0D0]">
+                                </div>
 
-            <div id="wrapper-filter-range" class="hidden">
-                <div class="flex items-center gap-2">
-                    <input type="date" id="finance-input-start" onchange="calculateFinance()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-semibold text-slate-700 outline-none focus:border-[#40E0D0]">
-                    <span class="text-[10px] font-bold text-slate-400">s/d</span>
-                    <input type="date" id="finance-input-end" onchange="calculateFinance()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-semibold text-slate-700 outline-none focus:border-[#40E0D0]">
-                </div>
-            </div>
-        </div>
-    </div>
+                                <div id="wrapper-filter-range" class="hidden">
+                                    <div class="flex items-center gap-2">
+                                        <input type="date" id="finance-input-start" onchange="calculateFinance()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-semibold text-slate-700 outline-none focus:border-[#40E0D0]">
+                                        <span class="text-[10px] font-bold text-slate-400">s/d</span>
+                                        <input type="date" id="finance-input-end" onchange="calculateFinance()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-semibold text-slate-700 outline-none focus:border-[#40E0D0]">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
-    <!-- METRIK LABA & OMSET -->
-    <div class="space-y-3">
-        <div class="bg-gradient-to-br from-[#40E0D0] to-teal-400 p-5 rounded-3xl shadow-md shadow-cyan-100 relative overflow-hidden text-white">
-            <div class="absolute -right-4 -top-4 opacity-20"><i class="fa-solid fa-chart-line text-7xl"></i></div>
-            <span class="text-[10px] font-bold text-teal-50 uppercase tracking-wider block mb-1">Perkiraan Laba Bersih</span>
-            <h3 id="rep-net-profit" class="text-2xl font-extrabold tracking-tight">Rp 0</h3>
-        </div>
-        
-        <div class="grid grid-cols-2 gap-3">
-            <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-center">
-                <span class="text-[9px] font-bold text-slate-400 block mb-1 uppercase">Pemasukan Kotor</span>
-                <h4 id="rep-total-income" class="text-sm font-extrabold text-slate-800">Rp 0</h4>
-            </div>
-            <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-center">
-                <span class="text-[9px] font-bold text-slate-400 block mb-1 uppercase">Total Pengeluaran</span>
-                <h4 id="rep-total-expense" class="text-sm font-extrabold text-rose-500">Rp 0</h4>
-            </div>
-        </div>
-    </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="bg-gradient-to-br from-[#40E0D0] to-teal-400 p-6 rounded-3xl shadow-md shadow-cyan-100 relative overflow-hidden text-white flex flex-col justify-center min-h-[130px]">
+                                <div class="absolute -right-4 -bottom-4 opacity-20"><i class="fa-solid fa-chart-line text-8xl"></i></div>
+                                <span class="text-[10px] md:text-xs font-bold text-teal-50 uppercase tracking-wider block mb-1">Perkiraan Laba Bersih</span>
+                                <h3 id="rep-net-profit" class="text-3xl font-extrabold tracking-tight">Rp 0</h3>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-center">
+                                    <span class="text-[9px] font-bold text-slate-400 block mb-1 uppercase">Pemasukan Kotor</span>
+                                    <h4 id="rep-total-income" class="text-sm md:text-base font-extrabold text-slate-800">Rp 0</h4>
+                                </div>
+                                <div class="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-center">
+                                    <span class="text-[9px] font-bold text-slate-400 block mb-1 uppercase">Total Pengeluaran</span>
+                                    <h4 id="rep-total-expense" class="text-sm md:text-base font-extrabold text-rose-500">Rp 0</h4>
+                                </div>
+                            </div>
+                        </div>
 
-    <!-- STATUS KEUANGAN (LUNAS VS PIUTANG) -->
-    <div class="grid grid-cols-2 gap-3 mt-3">
-        <div class="bg-emerald-50/70 p-3 rounded-2xl border border-emerald-100 shadow-sm text-center">
-            <span class="text-[9px] font-bold text-emerald-600 block uppercase"><i class="fa-solid fa-check-circle mr-1"></i> Sudah Lunas</span>
-            <h4 id="rep-lunas" class="text-xs font-extrabold text-emerald-700 mt-1">Rp 0</h4>
-        </div>
-        <div class="bg-amber-50/70 p-3 rounded-2xl border border-amber-100 shadow-sm text-center">
-            <span class="text-[9px] font-bold text-amber-600 block uppercase"><i class="fa-solid fa-clock-rotate-left mr-1"></i> Belum Bayar (Piutang)</span>
-            <h4 id="rep-belum-lunas" class="text-xs font-extrabold text-amber-700 mt-1">Rp 0</h4>
-        </div>
-    </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            
+                            <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-center">
+                                <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Status Pembayaran</h4>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div class="bg-emerald-50/70 p-3 rounded-2xl border border-emerald-100 text-center">
+                                        <span class="text-[9px] font-bold text-emerald-600 block uppercase"><i class="fa-solid fa-check-circle mr-1"></i> Sudah Lunas</span>
+                                        <h4 id="rep-lunas" class="text-xs md:text-sm font-extrabold text-emerald-700 mt-1.5">Rp 0</h4>
+                                    </div>
+                                    <div class="bg-amber-50/70 p-3 rounded-2xl border border-amber-100 text-center">
+                                        <span class="text-[9px] font-bold text-amber-600 block uppercase"><i class="fa-solid fa-clock-rotate-left mr-1"></i> Piutang</span>
+                                        <h4 id="rep-belum-lunas" class="text-xs md:text-sm font-extrabold text-amber-700 mt-1.5">Rp 0</h4>
+                                    </div>
+                                </div>
+                            </div>
 
-    <!-- METODE PEMBAYARAN -->
-    <p class="text-slate-400 text-xs mt-2">Pembayaran yang diterima (Lunas)</p>
-    <div class="grid grid-cols-3 gap-2 mb-4">
-        <div class="bg-white p-3 rounded-2xl border border-slate-100 shadow-sm text-center">
-            <span class="text-[9px] font-bold text-slate-400 block uppercase">Tunai</span>
-            <h4 id="rep-tunai" class="text-xs font-extrabold text-slate-800 mt-1">Rp 0</h4>
-        </div>
-        <div class="bg-white p-3 rounded-2xl border border-slate-100 shadow-sm text-center">
-            <span class="text-[9px] font-bold text-slate-400 block uppercase">QRIS</span>
-            <h4 id="rep-qris" class="text-xs font-extrabold text-slate-800 mt-1">Rp 0</h4>
-        </div>
-        <div class="bg-white p-3 rounded-2xl border border-slate-100 shadow-sm text-center">
-            <span class="text-[9px] font-bold text-slate-400 block uppercase">Debit/Trf</span>
-            <h4 id="rep-transfer" class="text-xs font-extrabold text-slate-800 mt-1">Rp 0</h4>
-        </div>
-    </div>
+                            <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-center">
+                                <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Metode Bayar (Lunas)</h4>
+                                <div class="grid grid-cols-3 gap-2">
+                                    <div class="bg-slate-50 p-2.5 rounded-2xl border border-slate-100 text-center flex flex-col justify-center">
+                                        <span class="text-[9px] font-bold text-slate-400 block uppercase">Tunai</span>
+                                        <h4 id="rep-tunai" class="text-[10px] font-extrabold text-slate-800 mt-1">Rp 0</h4>
+                                    </div>
+                                    <div class="bg-cyan-50/50 p-2.5 rounded-2xl border border-cyan-100 text-center flex flex-col justify-center">
+                                        <span class="text-[9px] font-bold text-cyan-600 block uppercase">QRIS</span>
+                                        <h4 id="rep-qris" class="text-[10px] font-extrabold text-slate-800 mt-1">Rp 0</h4>
+                                    </div>
+                                    <div class="bg-indigo-50/50 p-2.5 rounded-2xl border border-indigo-100 text-center flex flex-col justify-center">
+                                        <span class="text-[9px] font-bold text-indigo-600 block uppercase">Trf Bank</span>
+                                        <h4 id="rep-transfer" class="text-[10px] font-extrabold text-slate-800 mt-1">Rp 0</h4>
+                                    </div>
+                                </div>
+                            </div>
 
-    <!-- TOMBOL AKSI PENGELUARAN & EXPORT -->
-    <div class="grid grid-cols-2 gap-3">
-        <button onclick="toggleExpenseForm()" class="w-full bg-rose-50 text-rose-500 border border-rose-100 font-bold py-3 rounded-xl text-xs hover:bg-rose-100 transition-all flex justify-center items-center gap-1.5">
-            <i class="fa-solid fa-minus-circle"></i> Catat Keluar
-        </button>
-        <button onclick="exportFinanceToExcel()" class="w-full bg-emerald-50 text-emerald-600 border border-emerald-100 font-bold py-3 rounded-xl text-xs hover:bg-emerald-100 transition-all flex justify-center items-center gap-1.5">
-            <i class="fa-solid fa-file-excel"></i> Unduh Laporan
-        </button>
-    </div>
+                        </div>
+                    </div>
 
-    <div id="inline-expense-form" class="hidden bg-white p-5 rounded-3xl border border-rose-100 shadow-sm space-y-3 transition-all">
-        <h4 class="text-xs font-bold text-rose-500 uppercase tracking-wider flex items-center gap-2 mb-2">
-            <i class="fa-solid fa-money-bill-transfer"></i> Input Pengeluaran Baru
-        </h4>
-        <div>
-            <input type="text" id="expense-name" placeholder="Keperluan Beli Apa?" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold outline-none focus:border-rose-400">
-        </div>
-        <div>
-            <input type="number" id="expense-amount" placeholder="Nominal (Rp)" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold outline-none focus:border-rose-400">
-        </div>
-        <div>
-            <select id="expense-source" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold outline-none focus:border-rose-400">
-                <option value="Kas Laci (Tunai)">Kas Laci (Tunai)</option>
-                <option value="Saldo Bank / QRIS">Saldo Bank / QRIS</option>
-                <option value="Dana Pribadi (Owner)">Dana Pribadi (Owner)</option>
-            </select>
-        </div>
-        <div class="grid grid-cols-2 gap-3 pt-2">
-            <button onclick="toggleExpenseForm()" class="w-full bg-slate-100 text-slate-500 font-bold py-3 rounded-xl text-xs hover:bg-slate-200">Batal</button>
-            <button onclick="saveNewExpense()" class="w-full bg-rose-500 text-white font-bold py-3 rounded-xl text-xs shadow-md hover:bg-rose-600">Simpan</button>
-        </div>
-    </div>
+                    <div class="md:col-span-1 space-y-4 md:sticky md:top-24">
+                        
+                        <div class="grid grid-cols-2 gap-3">
+                            <button onclick="toggleExpenseForm()" class="w-full bg-rose-50 text-rose-500 border border-rose-100 font-bold py-3.5 rounded-xl text-xs hover:bg-rose-100 transition-all flex justify-center items-center gap-1.5 shadow-sm">
+                                <i class="fa-solid fa-minus-circle"></i> Catat Keluar
+                            </button>
+                            <button onclick="exportFinanceToExcel()" class="w-full bg-emerald-50 text-emerald-600 border border-emerald-100 font-bold py-3.5 rounded-xl text-xs hover:bg-emerald-100 transition-all flex justify-center items-center gap-1.5 shadow-sm">
+                                <i class="fa-solid fa-file-excel"></i> Unduh Laporan
+                            </button>
+                        </div>
 
-    <!-- TABS LOG HISTORI -->
-    <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-3">
-        <div class="flex p-1 bg-slate-50 border border-slate-100 rounded-xl relative gap-1">
-            <button onclick="switchLogTab('income')" id="tab-btn-income" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all bg-white shadow-sm text-slate-800">Masuk</button>
-            <button onclick="switchLogTab('expense')" id="tab-btn-expense" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all text-slate-400 hover:text-slate-600 bg-transparent">Keluar</button>
-            <button onclick="switchLogTab('piutang')" id="tab-btn-piutang" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all text-slate-400 hover:text-slate-600 bg-transparent">Belum Bayar</button>
-        </div>
-        
-        <div id="log-container-income" class="space-y-2 max-h-60 overflow-y-auto pr-1 text-xs block mt-2"></div>
-        <div id="log-container-expense" class="space-y-2 max-h-60 overflow-y-auto pr-1 text-xs hidden mt-2"></div>
-        <div id="log-container-piutang" class="space-y-2 max-h-60 overflow-y-auto pr-1 text-xs hidden mt-2"></div>
-    </div>
-</section>
+                        <div id="inline-expense-form" class="hidden bg-white p-5 rounded-3xl border border-rose-100 shadow-sm space-y-3 transition-all">
+                            <h4 class="text-xs font-bold text-rose-500 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                <i class="fa-solid fa-money-bill-transfer"></i> Input Pengeluaran
+                            </h4>
+                            <div>
+                                <input type="text" id="expense-name" placeholder="Keperluan Beli Apa?" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold outline-none focus:border-rose-400">
+                            </div>
+                            <div>
+                                <input type="number" id="expense-amount" placeholder="Nominal (Rp)" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold outline-none focus:border-rose-400">
+                            </div>
+                            <div>
+                                <select id="expense-source" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold outline-none focus:border-rose-400">
+                                    <option value="Kas Laci (Tunai)">Kas Laci (Tunai)</option>
+                                    <option value="Saldo Bank / QRIS">Saldo Bank / QRIS</option>
+                                    <option value="Dana Pribadi (Owner)">Dana Pribadi (Owner)</option>
+                                </select>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3 pt-2">
+                                <button onclick="toggleExpenseForm()" class="w-full bg-slate-100 text-slate-500 font-bold py-3 rounded-xl text-xs hover:bg-slate-200">Batal</button>
+                                <button onclick="saveNewExpense()" class="w-full bg-rose-500 text-white font-bold py-3 rounded-xl text-xs shadow-md hover:bg-rose-600">Simpan</button>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col h-[60vh] md:h-[calc(100vh-230px)]">
+                            <div class="flex p-1 bg-slate-50 border border-slate-100 rounded-xl relative gap-1 shrink-0 mb-3">
+                                <button onclick="switchLogTab('income')" id="tab-btn-income" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all bg-white shadow-sm text-slate-800">Masuk</button>
+                                <button onclick="switchLogTab('expense')" id="tab-btn-expense" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all text-slate-400 hover:text-slate-600 bg-transparent">Keluar</button>
+                                <button onclick="switchLogTab('piutang')" id="tab-btn-piutang" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all text-slate-400 hover:text-slate-600 bg-transparent">Belum Bayar</button>
+                            </div>
+                            
+                            <div class="flex-1 overflow-y-auto pr-1">
+                                <div id="log-container-income" class="space-y-2 text-xs block"></div>
+                                <div id="log-container-expense" class="space-y-2 text-xs hidden"></div>
+                                <div id="log-container-piutang" class="space-y-2 text-xs hidden"></div>
+                            </div>
+                        </div>
+
+                    </div>
+                </section>
+
 
 
                 <section id="view-settings" class="view-section hidden w-full max-w-md mx-auto space-y-4">
