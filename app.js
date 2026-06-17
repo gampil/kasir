@@ -1182,7 +1182,6 @@ function loadReceiptSettings() {
     if (nameCheck) nameCheck.checked = useName;
 }
 
-
 // ==========================================================
 // KONEKSI BLUETOOTH GLOBAL (PAIRING OTOMATIS SAAT KLIK PRINT)
 // ==========================================================
@@ -1200,7 +1199,7 @@ async function printBluetoothReceipt() {
         if (!currentOrderData) { return alert('❌ Data transaksi tidak ditemukan di memori sistem!'); }
 
         // ==============================================================
-        // 1. LOGIKA PAIRING: HANYA MUNCUL SAAT TOMBOL PRINT DIKLIK
+        // LOGIKA PAIRING: HANYA MUNCUL SAAT TOMBOL PRINT DIKLIK
         // ==============================================================
         if (!globalPrinterDevice || !globalPrinterDevice.gatt.connected) {
             triggerNotification("Meminta izin akses Printer Bluetooth...");
@@ -1246,10 +1245,10 @@ async function printBluetoothReceipt() {
         const CMD_BOLD_OFF = new Uint8Array([ESC, 0x45, 0]);
 
         const CMD_FEED = new Uint8Array([ESC, 0x64, 2]);
-        const CMD_SMALL_ON = new Uint8Array([ESC, 0x4D, 1]);
-        const CMD_SMALL_OFF = new Uint8Array([ESC, 0x4D, 0]);
-        const CMD_ITALIC_ON = new Uint8Array([ESC, 0x34]);
-        const CMD_ITALIC_OFF = new Uint8Array([ESC, 0x35]);
+        const CMD_SMALL_ON = new Uint8Array([ESC, 0x4D, 1]);  
+        const CMD_SMALL_OFF = new Uint8Array([ESC, 0x4D, 0]); 
+        const CMD_ITALIC_ON = new Uint8Array([ESC, 0x34]);    
+        const CMD_ITALIC_OFF = new Uint8Array([ESC, 0x35]);   
         const text = (str) => encoder.encode(str + "\n");
 
         const qrData = encoder.encode(trackingUrl);
@@ -1288,10 +1287,10 @@ async function printBluetoothReceipt() {
             printPayload.push(CMD_BOLD_ON, text(`====== ${tenantName.toUpperCase()} ======`), CMD_BOLD_OFF);
         }
 
-        printPayload.push(CMD_SMALL_ON, CMD_ITALIC_ON);
+        printPayload.push(CMD_SMALL_ON, CMD_ITALIC_ON); 
         printPayload.push(text(`Hub.+${phone}`));
         if (address !== "") { printPayload.push(text(address)); }
-        printPayload.push(CMD_SMALL_OFF, CMD_ITALIC_OFF);
+        printPayload.push(CMD_SMALL_OFF, CMD_ITALIC_OFF); 
 
         printPayload.push(text("================================"));
         printPayload.push(CMD_LEFT);
@@ -1340,158 +1339,11 @@ async function printBluetoothReceipt() {
         triggerNotification('✅ Struk berhasil dicetak');
     } catch (error) {
         console.error("Gagal cetak bluetooth:", error);
-        alert('❌ Pencetakan dibatalkan atau printer terputus. Pastikan printer menyala.');
+        alert('❌ Gagal print Bluetooth. Pastikan browser memiliki izin, printer menyala, dan tidak tersambung ke perangkat lain.');
         globalPrinterDevice = null;
         globalPrinterServer = null;
     }
 }
-
-async function printBluetoothReceipt() {
-    try {
-        const notaId = document.getElementById('nota-id').innerText;
-        const currentOrderData = orders.find(o => o.id === notaId);
-        if (!currentOrderData) { return alert('❌ Data transaksi tidak ditemukan di memori sistem!'); }
-
-        if (!globalPrinterDevice || !globalPrinterDevice.gatt.connected) {
-            await connectPrinter();
-        }
-
-        if (!globalPrinterDevice || !globalPrinterDevice.gatt.connected) {
-            return;
-        }
-
-        const notaCashier = currentOrderData.cashier || "Kasir";
-        const notaCustomer = currentOrderData.customer || "-";
-        const notaTotal = currentOrderData.total || 0;
-        const notaPaymethod = currentOrderData.method || "Tunai / Cash";
-        const notaPaymentStatus = currentOrderData.paymentStatus || "Lunas";
-        let paidVal = currentOrderData.cashPaid !== undefined && currentOrderData.cashPaid !== null ? currentOrderData.cashPaid : currentOrderData.total;
-        let changeVal = currentOrderData.cashChange !== undefined && currentOrderData.cashChange !== null ? currentOrderData.cashChange : 0;
-        const trackingUrl = `https://foresa.my.id?order=${notaId}`;
-
-        const service = await globalPrinterServer.getPrimaryService(PRINTER_SERVICE_UUID);
-        const characteristic = await service.getCharacteristic(PRINTER_CHARACTERISTIC_UUID);
-
-        const encoder = new TextEncoder();
-        const ESC = 0x1B; const GS = 0x1D;
-
-        const CMD_INIT = new Uint8Array([ESC, 0x40]);
-        const CMD_CENTER = new Uint8Array([ESC, 0x61, 1]);
-        const CMD_LEFT = new Uint8Array([ESC, 0x61, 0]);
-        const CMD_RIGHT = new Uint8Array([ESC, 0x61, 2]);
-        const CMD_BOLD_ON = new Uint8Array([ESC, 0x45, 1]);
-        const CMD_BOLD_OFF = new Uint8Array([ESC, 0x45, 0]);
-
-        const CMD_FEED = new Uint8Array([ESC, 0x64, 2]);
-        const CMD_SMALL_ON = new Uint8Array([ESC, 0x4D, 1]);  // Font B (Kecil)
-        const CMD_SMALL_OFF = new Uint8Array([ESC, 0x4D, 0]); // Font A (Normal)
-        const CMD_ITALIC_ON = new Uint8Array([ESC, 0x34]);    // Italic Nyala
-        const CMD_ITALIC_OFF = new Uint8Array([ESC, 0x35]);   // Italic Mati
-        const text = (str) => encoder.encode(str + "\n");
-
-        const qrData = encoder.encode(trackingUrl);
-        const qrLength = qrData.length + 3;
-        const pL = qrLength & 0xFF; const pH = (qrLength >> 8) & 0xFF;
-
-        const CMD_QR_MODEL = new Uint8Array([GS, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00]);
-        const CMD_QR_SIZE = new Uint8Array([GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x06]);
-        const CMD_QR_ERROR = new Uint8Array([GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x44, 0x30]);
-        const CMD_QR_STORE = new Uint8Array([GS, 0x28, 0x6B, pL, pH, 0x31, 0x50, 0x30, ...qrData]);
-        const CMD_QR_PRINT = new Uint8Array([GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30]);
-
-        let printPayload = [];
-        printPayload.push(CMD_INIT);
-        printPayload.push(CMD_CENTER);
-
-        // --- BACA PENGATURAN STRUK DARI MEMORI HP ---
-        const useLogo = localStorage.getItem('receipt_use_logo') !== 'false'; // Default nyala
-        const useName = localStorage.getItem('receipt_use_name') === 'true';  // Default mati
-        const phone = localStorage.getItem('receipt_phone') || tenantPhone || "628123456789";
-        const address = localStorage.getItem('receipt_address') || "";
-
-        // 1. Cetak Logo (Jika Dicentang)
-        if (useLogo) {
-            if (typeof getLogoPrintData === "function") {
-                const logoBuffer = await getLogoPrintData();
-                if (logoBuffer) {
-                    const CHUNK_SIZE = 256;
-                    for (let i = 0; i < logoBuffer.length; i += CHUNK_SIZE) {
-                        printPayload.push(logoBuffer.slice(i, i + CHUNK_SIZE));
-                    }
-                    printPayload.push(CMD_SPASI_MINI);
-                }
-            }
-        }
-
-        // 2. Cetak Nama Cabang Tebal (Jika Dicentang)
-        if (useName) {
-            printPayload.push(CMD_BOLD_ON, text(`====== ${tenantName.toUpperCase()} ======`), CMD_BOLD_OFF);
-        }
-
-        // 3. Cetak Kontak dan Alamat (Kecil & Miring)
-        printPayload.push(CMD_SMALL_ON, CMD_ITALIC_ON); // Aktifkan Kecil & Miring
-
-        printPayload.push(text(`Hub.+${phone}`));
-        if (address !== "") {
-            printPayload.push(text(address));
-        }
-
-        printPayload.push(CMD_SMALL_OFF, CMD_ITALIC_OFF); // PENTING: Kembalikan ke Normal
-
-        printPayload.push(text("================================"));
-        printPayload.push(CMD_LEFT);
-
-        // --- SISA STRUK (ITEM, TOTAL, QR) ---
-        printPayload.push(text(`Tgl Masuk : ${formatTanggalIndo(currentOrderData.date)}`));
-        printPayload.push(text(`Estimasi  : ${currentOrderData.estimatedPickup ? formatTanggalIndo(currentOrderData.estimatedPickup) : "-"}`));
-        printPayload.push(text(`Invoice   : ${notaId}`));
-        printPayload.push(text(`Kasir     : ${notaCashier}`));
-        printPayload.push(text(`Customer  : ${notaCustomer}`));
-        printPayload.push(text("--------------------------------"));
-
-        if (currentOrderData.itemsDetail && currentOrderData.itemsDetail.length > 0) {
-            currentOrderData.itemsDetail.forEach(it => {
-                let unit = 'x';
-                if (it.type) { unit = (it.type === 'Kiloan') ? 'Kg' : 'Pcs'; }
-                else { unit = (it.qty % 1 !== 0) ? 'Kg' : 'Pcs'; }
-
-                printPayload.push(CMD_LEFT, text(`${it.name}`));
-                printPayload.push(CMD_RIGHT, text(`${it.qty} ${unit} @ Rp ${it.price.toLocaleString('id-ID')} -> Rp ${(it.price * it.qty).toLocaleString('id-ID')}`));
-            });
-        } else {
-            printPayload.push(CMD_LEFT, text(currentOrderData.service || "Layanan Laundry"));
-        }
-
-        printPayload.push(CMD_LEFT, text("--------------------------------"));
-        printPayload.push(text(`Pembayaran : ${notaPaymethod}`));
-        printPayload.push(text(`Status     : ${notaPaymentStatus}`));
-        printPayload.push(text(`Uang Bayar : Rp ${paidVal.toLocaleString('id-ID')}`));
-        printPayload.push(text(`Kembalian  : Rp ${changeVal.toLocaleString('id-ID')}`));
-        printPayload.push(CMD_BOLD_ON, CMD_RIGHT);
-        printPayload.push(text(`TOTAL BILL : Rp ${notaTotal.toLocaleString('id-ID')}`));
-        printPayload.push(CMD_BOLD_OFF);
-        printPayload.push(CMD_CENTER, text("================================"));
-        printPayload.push(text("Scan untuk cek status pesanan:"));
-
-        printPayload.push(CMD_SPASI_MINI);
-        printPayload.push(CMD_QR_MODEL, CMD_QR_SIZE, CMD_QR_ERROR, CMD_QR_STORE, CMD_QR_PRINT);
-        printPayload.push(CMD_SPASI_MINI);
-
-        printPayload.push(text("Pakaian Bersih, Wangi & Rapi"));
-        printPayload.push(text("Terima Kasih :)"));
-
-        printPayload.push(CMD_FEED);
-
-        for (const chunk of printPayload) { await characteristic.writeValue(chunk); }
-        triggerNotification('✅ Struk berhasil dicetak');
-    } catch (error) {
-        console.error("Gagal cetak bluetooth:", error);
-        alert('❌ Gagal print Bluetooth. Pastikan printer menyala dan belum tersambung ke perangkat lain.');
-        globalPrinterDevice = null;
-        globalPrinterServer = null;
-    }
-}
-
 
 
 function updatePaymentStatus(orderId, newPaymentStatus) {
