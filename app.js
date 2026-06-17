@@ -378,7 +378,8 @@ function deleteServiceFromPOS(id) {
 
 function populateDropdowns() {
     const custDropdown = document.getElementById('cart-customer');
-    const payDropdown = document.getElementById('cart-payment');
+    const payInput = document.getElementById('cart-payment'); 
+    const payGrid = document.getElementById('cart-payment-grid');
 
     if (custDropdown) {
         if (customers.length > 0) {
@@ -389,7 +390,33 @@ function populateDropdowns() {
             custDropdown.innerHTML = `<option value="">Belum ada pelanggan terdaftar</option>`;
         }
     }
-    if (payDropdown && paymentMethods) { payDropdown.innerHTML = paymentMethods.map(p => `<option value="${p}">${p}</option>`).join(''); }
+    
+    // LOGIKA BARU: Cetak Grid Metode Pembayaran (Compact)
+    if (payGrid && paymentMethods) {
+        const currentVal = payInput ? payInput.value : 'Tunai / Cash';
+        payGrid.innerHTML = paymentMethods.map(p => {
+            // Singkat teksnya agar muat di grid kecil
+            let shortName = p === 'Tunai / Cash' ? 'Tunai' : p === 'Transfer Bank' ? 'Trf Bank' : p;
+            let isActive = p === currentVal;
+            
+            // Efek menyala kalau diklik
+            let activeClass = isActive 
+                ? 'bg-white shadow-sm text-slate-800 border-slate-200' 
+                : 'text-slate-400 hover:text-slate-600 border-transparent hover:bg-slate-100';
+            
+            return `<button type="button" onclick="selectPaymentMethod('${p}')" class="flex items-center justify-center w-full h-full text-[9px] font-bold rounded-lg transition-all border ${activeClass}">${shortName}</button>`;
+        }).join('');
+    }
+}
+
+// Fungsi pendamping ketika tombol Grid diklik
+function selectPaymentMethod(method) {
+    const payInput = document.getElementById('cart-payment');
+    if (payInput) {
+        payInput.value = method;       // Simpan nilainya diam-diam
+        populateDropdowns();           // Ubah warna tombol yang aktif
+        handlePaymentMethodChange();   // Jalankan hitung-hitungan kembalian kasir
+    }
 }
 
 function selectServiceToCart(id) {
