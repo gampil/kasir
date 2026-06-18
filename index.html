@@ -342,6 +342,15 @@
                                 </div>
                             </div>
                         </div>
+<div class="w-full bg-white p-4 rounded-2xl shadow-xs border border-slate-100 flex justify-between items-center">
+    <div>
+        <h2 class="text-sm font-bold text-slate-800">Cetak Closing Shift</h2>
+        <p class="text-[10px] text-slate-500 mt-0.5">Print rekap uang fisik sebelum logout.</p>
+    </div>
+    <button id="btn-print-closing" onclick="printBluetoothClosing()" class="bg-slate-800 hover:bg-black text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition active:scale-95 flex items-center gap-1.5 shrink-0">
+        <i class="fa-solid fa-print text-sm"></i> Print Rekap
+    </button>
+</div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div class="bg-gradient-to-br from-[#40E0D0] to-teal-400 p-6 rounded-3xl shadow-md shadow-cyan-100 relative overflow-hidden text-white flex flex-col justify-center min-h-[130px]">
@@ -446,8 +455,7 @@
                                 <div id="log-container-piutang" class="space-y-2 text-xs hidden"></div>
                             </div>
                         </div>
-
-                    </div>
+                    </div>                                     
                 </section>
 
 

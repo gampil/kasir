@@ -2079,3 +2079,157 @@ function refreshOrderList() {
 }
 
 
+// ==========================================================
+// CETAK PRINT CLOSING KASIR (REKAP HARIAN KOMPLIT)
+// ==========================================================
+async function printBluetoothClosing() {
+    if (orders.length === 0 && expenses.length === 0) {
+        return alert('❌ Belum ada data transaksi untuk dicetak!');
+    }
+
+    try {
+        // 1. KONEKSI KE PRINTER BLUETOOTH
+        if (!globalPrinterDevice || !globalPrinterDevice.gatt.connected) {
+            triggerNotification("Meminta izin akses Printer Bluetooth...");
+            globalPrinterDevice = await navigator.bluetooth.requestDevice({
+                filters: [{ namePrefix: 'MTP' }, { namePrefix: 'RPP' }, { namePrefix: 'POS' }, { namePrefix: 'EPPOS' }, { services: ['000018f0-0000-1000-8000-00805f9b34fb'] }],
+                optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
+            });
+            globalPrinterServer = await globalPrinterDevice.gatt.connect();
+            globalPrinterDevice.addEventListener('gattserverdisconnected', () => {
+                globalPrinterDevice = null; globalPrinterServer = null;
+            });
+        }
+        if (!globalPrinterDevice || !globalPrinterDevice.gatt.connected) return;
+
+        const service = await globalPrinterServer.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
+        const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
+
+        // 2. KALKULASI DATA (Menyesuaikan dengan filter tanggal yang sedang aktif di layar)
+        const mode = document.getElementById('finance-filter-mode') ? document.getElementById('finance-filter-mode').value : 'today';
+        const now = new Date();
+        const jktTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+        const y = jktTime.getFullYear(); const m = String(jktTime.getMonth() + 1).padStart(2, '0'); const d = String(jktTime.getDate()).padStart(2, '0');
+        const todayStr = `${y}-${m}-${d}`;
+
+        const parseDateString = (dateStr) => {
+            if (!dateStr) return null;
+            try {
+                const dt = new Date(dateStr); if (isNaN(dt.getTime())) return null;
+                return { dateStr: `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}` };
+            } catch (e) { return null; }
+        };
+
+        const parseNominal = (val) => { return Number(val.toString().replace(/[^0-9.-]+/g, "")) || 0; };
+
+        let filteredOrders = [...orders]; let filteredExpenses = [...expenses]; let reportLabel = "HARI INI";
+
+        // Terapkan Filter Tanggal
+        if (mode === 'today') {
+            filteredOrders = orders.filter(o => { const p = parseDateString(o.date); return p && p.dateStr === todayStr; });
+            filteredExpenses = expenses.filter(e => { const p = parseDateString(e.tanggal || e.date); return p && p.dateStr === todayStr; });
+            reportLabel = formatTanggalIndo(new Date().toISOString()).split(' ')[0];
+        } else if (mode === 'date') {
+            const pickerDate = document.getElementById('finance-input-date').value;
+            filteredOrders = orders.filter(o => { const p = parseDateString(o.date); return p && p.dateStr === pickerDate; });
+            filteredExpenses = expenses.filter(e => { const p = parseDateString(e.tanggal || e.date); return p && p.dateStr === pickerDate; });
+            reportLabel = formatTanggalIndo(new Date(pickerDate).toISOString()).split(' ')[0];
+        } else {
+            reportLabel = "SEMUA DATA (KESELURUHAN)";
+        }
+
+        // Kumpulkan Semua Nama Kasir yang melayani
+        const cashierNamesArray = Array.from(new Set(filteredOrders.map(o => o.cashier).filter(c => c && c.trim() !== "")));
+        const allCashiers = cashierNamesArray.length > 0 ? cashierNamesArray.join(', ') : currentCashier;
+
+        // Pisahkan Lunas & Belum Bayar
+        const lunasOrders = filteredOrders.filter(o => o.paymentStatus !== 'Belum Bayar');
+        const piutangOrders = filteredOrders.filter(o => o.paymentStatus === 'Belum Bayar');
+
+        // Hitung Pendapatan
+        const tIncome = filteredOrders.reduce((sum, o) => sum + parseNominal(o.total), 0); // Omset
+        const tLunas = lunasOrders.reduce((sum, o) => sum + parseNominal(o.total), 0);
+        const tPiutang = piutangOrders.reduce((sum, o) => sum + parseNominal(o.total), 0);
+        
+        const tTunai = lunasOrders.filter(o => o.method === 'Tunai / Cash').reduce((sum, o) => sum + parseNominal(o.total), 0);
+        const tQris = lunasOrders.filter(o => o.method === 'QRIS').reduce((sum, o) => sum + parseNominal(o.total), 0);
+        const tTransfer = lunasOrders.filter(o => o.method === 'Transfer Bank').reduce((sum, o) => sum + parseNominal(o.total), 0);
+
+        // Hitung Pengeluaran
+        const tExpenseAll = filteredExpenses.reduce((sum, e) => sum + parseNominal(e.nominal || e.amount), 0);
+        const tExpenseTunai = filteredExpenses.filter(e => e.sumber_dana === 'Kas Laci (Tunai)').reduce((sum, e) => sum + parseNominal(e.nominal || e.amount), 0);
+        const tExpenseNonTunai = tExpenseAll - tExpenseTunai;
+
+        // Hitungan Akhir Closing Setoran
+        const netProfit = tLunas - tExpenseAll;
+        const uangFisikLaci = tTunai - tExpenseTunai; // INI YANG PALING PENTING BUAT KASIR!
+
+        // 3. SUSUN DESAIN STRUK CLOSING
+        const encoder = new TextEncoder();
+        const text = (str) => encoder.encode(str + "\n");
+        const ESC = 0x1B;
+        const CMD_INIT = new Uint8Array([ESC, 0x40]);
+        const CMD_CENTER = new Uint8Array([ESC, 0x61, 1]);
+        const CMD_LEFT = new Uint8Array([ESC, 0x61, 0]);
+        const CMD_RIGHT = new Uint8Array([ESC, 0x61, 2]);
+        const CMD_BOLD_ON = new Uint8Array([ESC, 0x45, 1]);
+        const CMD_BOLD_OFF = new Uint8Array([ESC, 0x45, 0]);
+        const CMD_FEED = new Uint8Array([ESC, 0x64, 3]);
+
+        let payload = [];
+        payload.push(CMD_INIT, CMD_CENTER, CMD_BOLD_ON);
+        payload.push(text(`=== REKAP CLOSING KASIR ===`));
+        payload.push(text(`${tenantName.toUpperCase()}`));
+        payload.push(CMD_BOLD_OFF, CMD_LEFT);
+        payload.push(text(`--------------------------------`));
+        payload.push(text(`Tgl Laporan : ${reportLabel}`));
+        payload.push(text(`Waktu Cetak : ${formatTanggalIndo(new Date().toISOString())}`));
+        payload.push(text(`Kasir Shift : ${allCashiers}`));
+        payload.push(text(`--------------------------------`));
+        
+        payload.push(CMD_BOLD_ON, text(`[ PEMASUKAN TOKO ]`), CMD_BOLD_OFF);
+        payload.push(text(`Omset Kotor   : Rp ${tIncome.toLocaleString('id-ID')}`));
+        payload.push(text(`Piutang/Bon   : Rp ${tPiutang.toLocaleString('id-ID')}`));
+        payload.push(text(`Uang Lunas    : Rp ${tLunas.toLocaleString('id-ID')}`));
+        payload.push(text(`--------------------------------`));
+        
+        payload.push(CMD_BOLD_ON, text(`[ METODE PEMBAYARAN ]`), CMD_BOLD_OFF);
+        payload.push(text(`Uang Cash   : Rp ${tTunai.toLocaleString('id-ID')}`));
+        payload.push(text(`QRIS          : Rp ${tQris.toLocaleString('id-ID')}`));
+        payload.push(text(`Transfer Bank : Rp ${tTransfer.toLocaleString('id-ID')}`));
+        payload.push(text(`--------------------------------`));
+        
+        payload.push(CMD_BOLD_ON, text(`[ PENGELUARAN ]`), CMD_BOLD_OFF);
+        payload.push(text(`Total Keluar  : Rp ${tExpenseAll.toLocaleString('id-ID')}`));
+        payload.push(text(`- Dr Kas Laci : Rp ${tExpenseTunai.toLocaleString('id-ID')}`));
+        payload.push(text(`- Non Tunai   : Rp ${tExpenseNonTunai.toLocaleString('id-ID')}`));
+        payload.push(text(`--------------------------------`));
+        
+        payload.push(CMD_CENTER, CMD_BOLD_ON);
+        payload.push(text(`=== RINGKASAN SETORAN ===`));
+        payload.push(CMD_LEFT);
+        payload.push(text(`Laba Bersih   : Rp ${netProfit.toLocaleString('id-ID')}`));
+        
+        payload.push(CMD_BOLD_ON);
+        payload.push(text(`UANG CASH : Rp ${uangFisikLaci.toLocaleString('id-ID')}`));
+        payload.push(CMD_BOLD_OFF);
+        
+        payload.push(CMD_CENTER);
+        payload.push(text(`--------------------------------`));
+        payload.push(text(`Hitung & cocokkan uang di laci`));
+        payload.push(text(`dengan 'UANG CASH' di atas.`));
+        payload.push(text(`Ttd. Penanggung Jawab`));
+        payload.push(text(`\n\n`));
+        payload.push(text(`(.........................)`));
+        payload.push(text(`================================`));
+        payload.push(CMD_FEED);
+
+        // 4. KIRIM KE PRINTER
+        for (const chunk of payload) { await characteristic.writeValue(chunk); }
+        triggerNotification('✅ Struk Closing berhasil dicetak!');
+
+    } catch (error) {
+        console.error("Gagal cetak closing:", error);
+        alert('❌ Pencetakan batal / gagal. Pastikan Printer menyala.');
+    }
+}
