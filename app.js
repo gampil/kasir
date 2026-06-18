@@ -946,7 +946,12 @@ function renderOrders() {
                     <span class="text-xs font-bold theme-color">Rp ${o.total.toLocaleString('id-ID')}</span>
                     <div class="flex gap-1">
                         <button onclick="openLiveTrackingPreview('${o.id}')" class="text-[10px] font-bold bg-cyan-50 theme-color px-2.5 py-1.5 rounded-lg hover:bg-cyan-100/50" title="Cek Tampilan Live"><i class="fa-solid fa-eye"></i></button>
-                        <button onclick="openReceiptModalById('${o.id}')" class="text-[10px] font-bold bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-200">Buka Struk</button>
+                        
+                        <button onclick="printBluetoothReceipt(true, '${o.id}')" class="text-[10px] font-bold bg-slate-800 text-white px-2.5 py-1.5 rounded-lg hover:bg-slate-700 shadow-sm" title="Print Label Baju">
+                            <i class="fa-solid fa-tag mr-1"></i> Label
+                        </button>
+                        
+                        <button onclick="openReceiptModalById('${o.id}')" class="text-[10px] font-bold bg-slate-100 text-slate-600 px-2.5 py-1.5 rounded-lg hover:bg-slate-200">Detail</button>
                     </div>
                 </div>
             </div>`;
@@ -1219,9 +1224,11 @@ const CMD_SPASI_MINI = new Uint8Array([0x1B, 0x4A, 16]);
 let globalPrinterDevice = null;
 let globalPrinterServer = null;
 
-async function printBluetoothReceipt() {
+// Tambahkan parameter isLabelForLaundry (default: false) dan targetOrderId (default: null)
+async function printBluetoothReceipt(isLabelForLaundry = false, targetOrderId = null) {
     try {
-        const notaId = document.getElementById('nota-id').innerText;
+        // Jika ada targetOrderId dari jalan pintas, gunakan itu. Jika tidak, ambil dari modal.
+        const notaId = targetOrderId || document.getElementById('nota-id').innerText;
         const currentOrderData = orders.find(o => o.id === notaId);
         if (!currentOrderData) { return alert('❌ Data transaksi tidak ditemukan di memori sistem!'); }
 
@@ -1327,6 +1334,24 @@ async function printBluetoothReceipt() {
         printPayload.push(text(`Invoice   : ${notaId}`));
         printPayload.push(text(`Kasir     : ${notaCashier}`));
         printPayload.push(text(`Customer  : ${notaCustomer}`));
+
+        // ==============================================================
+        // SULAP NAMA PELANGGAN JADI BESAR JIKA TOMBOL LABEL KASIR DITEKAN
+        // ==============================================================
+        if (isLabelForLaundry) {
+            const CMD_SIZE_LARGE = new Uint8Array([GS, 0x21, 0x11]); 
+            const CMD_SIZE_NORMAL = new Uint8Array([GS, 0x21, 0x00]); 
+            
+            printPayload.push(text("--------------------------------"));
+            printPayload.push(CMD_CENTER);
+            printPayload.push(text("LABEL PAKAIAN:"));
+            printPayload.push(CMD_BOLD_ON, CMD_SIZE_LARGE);
+            printPayload.push(text(` ${notaCustomer.toUpperCase()} `));
+            printPayload.push(CMD_SIZE_NORMAL, CMD_BOLD_OFF);
+            printPayload.push(CMD_LEFT);
+        }
+        // ==============================================================
+
         printPayload.push(text("--------------------------------"));
 
         if (currentOrderData.itemsDetail && currentOrderData.itemsDetail.length > 0) {
@@ -1363,7 +1388,9 @@ async function printBluetoothReceipt() {
         printPayload.push(CMD_FEED);
 
         for (const chunk of printPayload) { await characteristic.writeValue(chunk); }
-        triggerNotification('✅ Struk berhasil dicetak');
+        
+        // Notifikasi disesuaikan dengan tombol yang ditekan
+        triggerNotification(isLabelForLaundry ? '✅ Label Kasir berhasil dicetak' : '✅ Struk Pelanggan berhasil dicetak');
     } catch (error) {
         console.error("Gagal cetak bluetooth:", error);
         alert('❌ Gagal print Bluetooth. Pastikan browser memiliki izin, printer menyala, dan tidak tersambung ke perangkat lain.');

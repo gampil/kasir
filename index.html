@@ -201,7 +201,7 @@
                             </div>
                             <button onclick="processCheckout()" class="w-full theme-bg text-white font-extrabold py-4 rounded-xl shadow-[0_8px_20px_-6px_rgba(64,224,208,0.5)] hover:opacity-95 active:scale-95 transition-all flex justify-center items-center gap-2 text-sm tracking-wide">
                                 <i class="fa-solid fa-print text-lg"></i> PROSES & CETAK
-                            </button>
+                            </button>                        
                         </div>
                     </div>
                 </section>
@@ -601,16 +601,19 @@
             </div>
 
             <div class="grid grid-cols-1 gap-2 pt-2">
-                <button onclick="printBluetoothReceipt()" class="w-full theme-bg text-white font-bold py-3 rounded-xl text-xs shadow-md shadow-cyan-100 flex justify-center items-center gap-1.5 hover:opacity-90">
-                    <i class="fa-solid fa-bluetooth-b"></i> Print Bluetooth Thermal
+                <button onclick="printBluetoothReceipt(false)" class="w-full theme-bg text-white font-bold py-3 rounded-xl text-xs shadow-md shadow-cyan-100 flex justify-center items-center gap-1.5 hover:opacity-90">
+                    <i class="fa-solid fa-bluetooth-b"></i> Cetak Struk Pelanggan
                 </button>
+                
+                <button onclick="printBluetoothReceipt(true)" class="w-full bg-slate-800 text-white font-bold py-3 rounded-xl text-xs shadow-md flex justify-center items-center gap-1.5 hover:bg-slate-700">
+                    <i class="fa-solid fa-tag"></i> Cetak Label Kasir (Tempel Baju)
+                </button>
+
                 <button onclick="sendWhatsAppReceipt()" class="w-full bg-emerald-500 text-white font-bold py-3 rounded-xl text-xs shadow-md shadow-emerald-100 flex justify-center items-center gap-1.5 hover:bg-emerald-600">
                     <i class="fa-brands fa-whatsapp"></i> Kirim via WA
                 </button>
                 <button onclick="document.getElementById('receiptModal').classList.add('hidden')" class="w-full bg-slate-100 text-slate-500 font-bold py-2.5 rounded-xl text-xs hover:bg-slate-200">Tutup</button>
             </div>
-        </div>
-    </div>
 
     <div id="liveAlert" class="hidden fixed top-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] sm:w-full sm:max-w-sm bg-slate-900/95 text-white p-4 rounded-2xl shadow-xl z-50 flex items-center gap-3 border border-slate-800 transition-all animate-bounce">
         <div class="w-8 h-8 rounded-xl theme-bg text-white flex items-center justify-center text-xs"><i class="fa-solid fa-bell"></i></div>
@@ -661,7 +664,6 @@
         <p class="text-[10px] text-slate-400 mt-4 font-medium uppercase tracking-wider">Arahkan kamera ke QR Code pelanggan</p>
     </div>
 </div>
-
 
     <script src="app.js"></script>
 </body>
