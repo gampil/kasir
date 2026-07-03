@@ -129,6 +129,7 @@ async function submitLogin() {
         currentCashier = validCashier.name;
         localStorage.setItem('active_cashier', currentCashier);
         showMainApp();
+        requestFullScreen();
         triggerNotification(`Selamat bertugas, ${currentCashier}! 👋`);
     } else {
         alert('❌ Kombinasi Nama Kasir atau PIN Rahasia Salah! Akses ditolak.');
@@ -420,20 +421,35 @@ function renderCart() {
     const container = document.getElementById('cart-items');
     if (!container) return;
 
+    // Elemen Tombol Sticky HP
+    const stickyBtn = document.getElementById('sticky-checkout-btn');
+    const stickyTotal = document.getElementById('sticky-cart-total');
+    const stickyCount = document.getElementById('sticky-cart-count');
+
+    // Kondisi 1: Jika keranjang KOSONG
     if (cart.length === 0) {
         container.innerHTML = `<span class="text-center italic text-slate-400 py-4 bg-slate-50 rounded-2xl border border-slate-100 border-dashed w-full block">Silahkan pilih produk di sebelah kiri...</span>`;
         const totalEl = document.getElementById('total-amount');
         if (totalEl) totalEl.innerText = "Rp 0";
         resetCashCalculationInputs();
+        
+        // Sembunyikan tombol sticky HP & tutup bottom sheet
+        if (stickyBtn) {
+            stickyBtn.classList.add('hidden');
+            if (window.innerWidth < 768) closeCheckoutSheet();
+        }
         return;
     }
 
+    // Kondisi 2: Jika keranjang ADA ISINYA
     let html = '<div class="space-y-3 w-full">';
     let totalAkhir = 0;
+    let totalItemQty = 0;
 
     cart.forEach((item, index) => {
         const subtotal = bulatkanHarga(item.price * item.qty);
         totalAkhir += subtotal;
+        totalItemQty += parseFloat(item.qty);
         const isKiloan = item.type === 'Kiloan';
 
         html += `
@@ -462,6 +478,13 @@ function renderCart() {
     const totalEl = document.getElementById('total-amount');
     if (totalEl) totalEl.innerText = `Rp ${Math.round(totalAkhir).toLocaleString('id-ID')}`;
     calculateChangeAutomatically();
+
+    // Munculkan & Update Data Tombol Sticky HP
+    if (stickyBtn && stickyTotal && stickyCount) {
+        stickyBtn.classList.remove('hidden');
+        stickyCount.innerText = `${totalItemQty} Qty`;
+        stickyTotal.innerText = `Rp ${Math.round(totalAkhir).toLocaleString('id-ID')}`;
+    }
 }
 
 function deleteCartItem(index) {
@@ -549,19 +572,34 @@ function resetCashCalculationInputs() {
     }
 }
 
-function toggleNewCustomerInput() {
-    const toggleInput = document.getElementById('customer-toggle-input');
+function setCustomerMode(mode) {
+    isNewCustomerMode = (mode === 'new');
+    
+    const btnOld = document.getElementById('btn-cust-old');
+    const btnNew = document.getElementById('btn-cust-new');
     const boxOld = document.getElementById('box-old-customer');
     const boxNew = document.getElementById('box-new-customer');
 
-    if (!toggleInput || !boxOld || !boxNew) return;
-    isNewCustomerMode = toggleInput.checked;
+    // Styling Class untuk tombol aktif dan non-aktif
+    const activeClass = "flex-1 py-2.5 text-xs font-bold rounded-lg transition-all bg-white shadow-sm text-[#40E0D0] border border-slate-100";
+    const inactiveClass = "flex-1 py-2.5 text-xs font-bold rounded-lg transition-all text-slate-400 hover:text-slate-600 bg-transparent border border-transparent";
 
     if (isNewCustomerMode) {
-        boxOld.classList.add('hidden'); boxNew.classList.remove('hidden');
+        // Tampilan Mode Pelanggan Baru
+        if (btnOld) btnOld.className = inactiveClass;
+        if (btnNew) btnNew.className = activeClass;
+        if (boxOld) boxOld.classList.add('hidden');
+        if (boxNew) boxNew.classList.remove('hidden');
     } else {
-        boxOld.classList.remove('hidden'); boxNew.classList.add('hidden');
-        document.getElementById('new-cust-name').value = ''; document.getElementById('new-cust-phone').value = '';
+        // Tampilan Mode Pelanggan Terdaftar (Lama)
+        if (btnOld) btnOld.className = activeClass;
+        if (btnNew) btnNew.className = inactiveClass;
+        if (boxOld) boxOld.classList.remove('hidden');
+        if (boxNew) boxNew.classList.add('hidden');
+        
+        // Reset isi inputan kalau balik ke pelanggan lama
+        if (document.getElementById('new-cust-name')) document.getElementById('new-cust-name').value = '';
+        if (document.getElementById('new-cust-phone')) document.getElementById('new-cust-phone').value = '';
     }
 }
 
@@ -676,9 +714,7 @@ function processCheckout() {
 
     cart = []; renderCart();
 
-    const toggleInput = document.getElementById('customer-toggle-input');
-    if (toggleInput && toggleInput.checked) toggleInput.checked = false;
-    toggleNewCustomerInput();
+    setCustomerMode('old');
 
     document.getElementById('new-cust-name').value = ''; document.getElementById('new-cust-phone').value = '';
     resetCashCalculationInputs(); renderServicesGrid(); setDefaultDates();
@@ -2101,3 +2137,129 @@ async function printBluetoothClosing() {
         alert('❌ Pencetakan batal / gagal. Pastikan Printer menyala.');
     }
 }
+
+// ===============================================================
+// FITUR BOTTOM SHEET KERANJANG (MOBILE)
+// ===============================================================
+function openCheckoutSheet() {
+    const sheet = document.getElementById('checkout-sheet');
+    const backdrop = document.getElementById('checkout-sheet-backdrop');
+    
+    if (backdrop && sheet) {
+        backdrop.classList.remove('hidden');
+        setTimeout(() => backdrop.classList.remove('opacity-0'), 10);
+        sheet.classList.remove('translate-y-full');
+        document.body.style.overflow = 'hidden'; // Kunci scroll layar belakang
+    }
+}
+
+function closeCheckoutSheet() {
+    const sheet = document.getElementById('checkout-sheet');
+    const backdrop = document.getElementById('checkout-sheet-backdrop');
+    
+    if (backdrop && sheet) {
+        sheet.classList.add('translate-y-full');
+        backdrop.classList.add('opacity-0');
+        setTimeout(() => backdrop.classList.add('hidden'), 300);
+        document.body.style.overflow = ''; // Lepas kunci scroll
+    }
+}
+
+function requestFullScreen() {
+    const elem = document.documentElement; // Mengambil seluruh halaman
+    if (elem.requestFullscreen) {
+        elem.requestFullscreen();
+    } else if (elem.webkitRequestFullscreen) { /* Safari */
+        elem.webkitRequestFullscreen();
+    } else if (elem.msRequestFullscreen) { /* IE11 */
+        elem.msRequestFullscreen();
+    }
+}
+
+// ===============================================================
+// FITUR TOGGLE FULLSCREEN
+// ===============================================================
+function toggleFullScreen() {
+    if (!document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
+        // Masuk Fullscreen
+        const elem = document.documentElement;
+        if (elem.requestFullscreen) {
+            elem.requestFullscreen();
+        } else if (elem.msRequestFullscreen) {
+            elem.msRequestFullscreen();
+        } else if (elem.mozRequestFullScreen) {
+            elem.mozRequestFullScreen();
+        } else if (elem.webkitRequestFullscreen) {
+            elem.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
+        }
+        triggerNotification("Layar penuh diaktifkan");
+    } else {
+        // Keluar Fullscreen
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+            document.mozCancelFullScreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        }
+        triggerNotification("Keluar dari layar penuh");
+    }
+}
+
+// ===============================================================
+// FITUR INSTALL PWA
+// ===============================================================
+let deferredPrompt;
+
+// Menangkap event sebelum prompt instalasi bawaan browser muncul
+window.addEventListener('beforeinstallprompt', (e) => {
+    // Mencegah prompt bawaan muncul otomatis
+    e.preventDefault();
+    // Menyimpan event untuk dipicu nanti saat tombol diklik
+    deferredPrompt = e;
+    
+    // Tampilkan tombol Install kustom kita
+    const installBtn = document.getElementById('btn-install-pwa');
+    if (installBtn) {
+        installBtn.classList.remove('hidden');
+        installBtn.classList.add('flex');
+    }
+});
+
+// Fungsi saat tombol Install diklik
+async function installPWA() {
+    if (deferredPrompt) {
+        // Tampilkan prompt instalasi bawaan sistem
+        deferredPrompt.prompt();
+        
+        // Tunggu pilihan user (diterima/ditolak)
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+            console.log('User menerima instalasi PWA');
+        } else {
+            console.log('User menolak instalasi PWA');
+        }
+        
+        // Kosongkan prompt setelah digunakan
+        deferredPrompt = null;
+        
+        // Sembunyikan tombol kembali
+        const installBtn = document.getElementById('btn-install-pwa');
+        if (installBtn) {
+            installBtn.classList.remove('flex');
+            installBtn.classList.add('hidden');
+        }
+    }
+}
+
+// Sembunyikan tombol jika aplikasi sudah berhasil diinstal
+window.addEventListener('appinstalled', () => {
+    const installBtn = document.getElementById('btn-install-pwa');
+    if (installBtn) {
+        installBtn.classList.remove('flex');
+        installBtn.classList.add('hidden');
+    }
+    triggerNotification('Aplikasi berhasil diinstal di perangkat ini!');
+});
